@@ -1,5 +1,9 @@
 # Sports Trader Intelligence
 
+**En vivo:** https://sports-trader-intelligence.vercel.app
+**Supabase:** proyecto `xpgzhasnabtucjlbxuun` (región us-east-2) · esquema + seed aplicados.
+
+
 Aplicación de análisis y predicción de fútbol orientada a **trading deportivo**:
 genera probabilidades estadísticamente fundamentadas, las compara contra las
 cuotas del mercado para detectar *value bets*, y mantiene memoria histórica
@@ -103,10 +107,19 @@ supabase/
 4. ✅ **Frontend conectado** — dashboard, ficha de partido, modo demo.
 5. ✅ **Calibración + admin** — Brier/log-loss + reliability diagram, editor de pesos.
 
-**Pendiente (despliegue):** añadir el adapter SSR de Vercel en `astro.config.mjs`
-(`output: 'server'` + `@astrojs/vercel`) para que `npm run build` y las rutas
-dinámicas funcionen en producción; crear el proyecto Supabase y cargar el secret
-`API_FOOTBALL_KEY`.
+**Estado del despliegue:**
+- ✅ Frontend en Vercel (adapter `@astrojs/vercel`), conectado a Supabase real.
+- ✅ Supabase: esquema + RLS + seed (Suiza-Canadá, Bosnia-Catar) + salida del
+  modelo precalculada. Advisors de seguridad resueltos.
+- ⏳ **Pendiente (requiere tu API key):** cargar el secret `API_FOOTBALL_KEY` y
+  desplegar las Edge Functions de sync. `run-model` y `sync-odds` importan
+  `@sti/model` por ruta relativa: para desplegarlas hay que *vendorizar* esos
+  archivos dentro de `supabase/functions/` (Deno no resuelve fuera del directorio
+  de la función). Mientras tanto, la app funciona con los datos sembrados.
+
+> Re-desplegar: `npm run build && npx vercel deploy --prebuilt --prod`. Las claves
+> `PUBLIC_SUPABASE_*` se *inlinean* en build desde `.env`; en Vercel conviene
+> añadirlas también como Environment Variables del proyecto para builds remotos.
 
 ## Modo demo
 
