@@ -52,30 +52,40 @@ function h2h(home: number, away: number) {
 }
 
 // fixtureLocalId -> [homeApi, awayApi, etiqueta]
-const FIX: [number, number, number, string][] = [
-  [1, 15, 5529, 'Suiza-Canadá'],
-  [2, 1113, 1569, 'Bosnia-Catar'],
-  [3, 8, 1508, 'Colombia-CongoRD'],
-  [4, 31, 2386, 'Marruecos-Haití'],
-  [5, 1108, 6, 'Escocia-Brasil'],
-];
+const FIX: [number, number, number, string][] =
+  JSON.parse(readFileSync(join(here, 'fixtures.json'), 'utf8'));
 
-for (const [fid, home, away, label] of FIX) {
-  const ctxFactors: ContextFactors = {
+const r4 = (x: number) => x.toFixed(4);
+const eloVals: string[] = [];
+const outVals: string[] = [];
+const predVals: string[] = [];
+const seenTeams = new Set<number>();
+
+for (const [fid, home, away] of FIX) {
+  const ctx = contextModifier({
     injuriesHome: 0, injuriesAway: 0, formHome: form(home), formAway: form(away),
     restAdvantage: 0, h2h: h2h(home, away), pressure: 0,
-  };
-  const ctx = contextModifier(ctxFactors);
+  });
   let { lambdaHome, lambdaAway } = eloToLambdas(E(home), E(away), { mu: MU, homeAdvantage: 0 });
   const shift = Math.exp(0.2 * ctx);
   lambdaHome *= shift; lambdaAway /= shift;
   const p = buildScoreMatrix(lambdaHome, lambdaAway);
   const e = eloToOneXtwo(E(home), E(away), { homeAdvantage: 0, kBase: 30 }, NU);
   const f = blend1x2(p.oneXtwo, e, 0.625);
-  console.log(`FIX ${fid} ${label.padEnd(18)} Elo ${Math.round(E(home))}/${Math.round(E(away))} | ` +
-    `lambda_home=${lambdaHome.toFixed(3)} lambda_away=${lambdaAway.toFixed(3)} ` +
-    `ph=${f.home.toFixed(4)} pd=${f.draw.toFixed(4)} pa=${f.away.toFixed(4)} ` +
-    `o15=${p.over['1.5'].toFixed(4)} o25=${p.over['2.5'].toFixed(4)} o35=${p.over['3.5'].toFixed(4)} ` +
-    `btts=${p.btts.toFixed(4)} score=${p.mostLikelyScore[0]}-${p.mostLikelyScore[1]} ` +
-    `elo_home=${Math.round(E(home))} elo_away=${Math.round(E(away))}`);
+
+  for (const tid of [home, away]) if (!seenTeams.has(tid)) { seenTeams.add(tid); eloVals.push(`(${tid},${Math.round(E(tid))})`); }
+  outVals.push(`(${fid},'dc-elo-ctx-0.1.0',${lambdaHome.toFixed(3)},${lambdaAway.toFixed(3)},${r4(f.home)},${r4(f.draw)},${r4(f.away)},${r4(p.over['1.5'])},${r4(p.over['2.5'])},${r4(p.over['3.5'])},${r4(p.btts)},'${p.mostLikelyScore[0]}-${p.mostLikelyScore[1]}')`);
+  // predicciones solo para los fixtures sin odds aún (6..16); 1-5 ya están
+  if (fid >= 6) {
+    predVals.push(`(${fid},'dc-elo-ctx-0.1.0','1x2','home',${r4(f.home)})`);
+    predVals.push(`(${fid},'dc-elo-ctx-0.1.0','1x2','draw',${r4(f.draw)})`);
+    predVals.push(`(${fid},'dc-elo-ctx-0.1.0','1x2','away',${r4(f.away)})`);
+  }
 }
+
+console.log('-- ELO');
+console.log(`insert into public.team_elo_history (team_id, elo, as_of) select t.id, v.elo, now() from public.teams t join (values ${eloVals.join(',')}) v(api,elo) on v.api=t.api_id;`);
+console.log('-- OUTPUTS');
+console.log(`insert into public.match_model_outputs (fixture_id, model_version, lambda_home, lambda_away, prob_home, prob_draw, prob_away, prob_over_15, prob_over_25, prob_over_35, prob_btts, most_likely_score) values ${outVals.join(',')} on conflict (fixture_id, model_version) do update set lambda_home=excluded.lambda_home, lambda_away=excluded.lambda_away, prob_home=excluded.prob_home, prob_draw=excluded.prob_draw, prob_away=excluded.prob_away, prob_over_15=excluded.prob_over_15, prob_over_25=excluded.prob_over_25, prob_over_35=excluded.prob_over_35, prob_btts=excluded.prob_btts, most_likely_score=excluded.most_likely_score;`);
+console.log('-- PREDICTIONS');
+console.log(`insert into public.predictions (fixture_id, model_version, market, selection, model_prob) values ${predVals.join(',')};`);
