@@ -350,6 +350,16 @@ create table if not exists public.api_request_log (
 );
 create index if not exists idx_api_log_day on public.api_request_log(day);
 
+-- RPC pública para el QuotaMeter del frontend: cuántas solicitudes se han usado
+-- hoy. SECURITY DEFINER para poder leer api_request_log (que el cliente no toca).
+create or replace function public.api_requests_today()
+returns int language sql security definer set search_path = public stable as $$
+  select count(*)::int
+  from public.api_request_log
+  where day = (now() at time zone 'utc')::date;
+$$;
+grant execute on function public.api_requests_today() to anon, authenticated;
+
 -- =============================================================================
 -- ROW LEVEL SECURITY
 --   * Lectura pública de datos de referencia/modelo (anon + authenticated).
