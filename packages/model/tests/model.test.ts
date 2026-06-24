@@ -11,6 +11,12 @@ import {
   valueSignal,
   eloToLambdas,
   blend1x2,
+  combineEnsemble,
+  contextModifier,
+  injurySeverity,
+  formScore,
+  restAdvantage,
+  h2hScore,
 } from '../src/index';
 
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
@@ -77,6 +83,56 @@ describe('Ensemble', () => {
     expect(m.home + m.draw + m.away).toBeCloseTo(1, 6);
     expect(m.home).toBeGreaterThan(b.home);
     expect(m.home).toBeLessThan(a.home);
+  });
+});
+
+describe('Contexto', () => {
+  it('injurySeverity pondera por importancia y satura en 1', () => {
+    expect(injurySeverity([])).toBe(0);
+    expect(injurySeverity([0.3, 0.2])).toBeCloseTo(0.5, 6);
+    expect(injurySeverity([0.8, 0.7])).toBe(1); // satura
+  });
+
+  it('formScore premia ganar a rivales fuertes', () => {
+    const vsFuerte = formScore([{ result: 'W', opponentElo: 1700, teamElo: 1500, ageInMatches: 0 }]);
+    const vsDebil = formScore([{ result: 'W', opponentElo: 1300, teamElo: 1500, ageInMatches: 0 }]);
+    expect(vsFuerte).toBeGreaterThan(0);
+    expect(vsFuerte).toBeGreaterThan(vsDebil);
+  });
+
+  it('restAdvantage favorece a quien descansó más', () => {
+    expect(restAdvantage(6, 3)).toBeGreaterThan(0);
+    expect(restAdvantage(3, 6)).toBeLessThan(0);
+  });
+
+  it('h2hScore resume el historial directo', () => {
+    expect(h2hScore(['home', 'home', 'draw'])).toBeGreaterThan(0);
+    expect(h2hScore(['away', 'away'])).toBe(-1);
+  });
+
+  it('contextModifier: bajas del rival favorecen al local', () => {
+    const base = {
+      injuriesHome: 0, injuriesAway: 0, formHome: 0, formAway: 0,
+      restAdvantage: 0, h2h: 0, pressure: 0,
+    };
+    expect(contextModifier(base)).toBeCloseTo(0, 6);
+    expect(contextModifier({ ...base, injuriesAway: 0.8 })).toBeGreaterThan(0);
+    expect(contextModifier({ ...base, injuriesHome: 0.8 })).toBeLessThan(0);
+  });
+});
+
+describe('combineEnsemble', () => {
+  it('iguales y sin contexto -> 1X2 simétrico y suma 1', () => {
+    const r = combineEnsemble({ eloHome: 1500, eloAway: 1500, homeAdvantage: 0 });
+    expect(r.final.home + r.final.draw + r.final.away).toBeCloseTo(1, 6);
+    expect(r.final.home).toBeCloseTo(r.final.away, 6);
+  });
+
+  it('contexto positivo sube la probabilidad del local', () => {
+    const sin = combineEnsemble({ eloHome: 1500, eloAway: 1500 });
+    const con = combineEnsemble({ eloHome: 1500, eloAway: 1500, context: 1 });
+    expect(con.final.home).toBeGreaterThan(sin.final.home);
+    expect(con.lambdaHome).toBeGreaterThan(con.lambdaAway);
   });
 });
 
