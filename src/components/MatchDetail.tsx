@@ -38,6 +38,10 @@ export default function MatchDetail({ id }: { id: number }) {
 
   const { fixture, model, predictions, eloHome, eloAway, source } = data;
   const valueBets = predictions.filter((p) => p.flagged_value);
+  const order = { home: 0, draw: 1, away: 2 } as Record<string, number>;
+  const market1x2 = predictions
+    .filter((p) => p.market === '1x2')
+    .sort((a, b) => (order[a.selection] ?? 9) - (order[b.selection] ?? 9));
 
   return (
     <div className="space-y-4">
@@ -91,21 +95,48 @@ export default function MatchDetail({ id }: { id: number }) {
         )}
       </div>
 
-      {/* Value bets */}
+      {/* Modelo vs Mercado */}
       <div className="panel p-4">
-        <div className="label mb-3">Value bets (modelo vs cuotas)</div>
-        {valueBets.length ? (
-          <ul className="space-y-1 text-sm">
-            {valueBets.map((p, i) => (
-              <li key={i} className="flex justify-between">
-                <span>{p.market} · {p.selection}</span>
-                <span className="tabular text-signal-up">+{((p.value_edge ?? 0) * 100).toFixed(1)}%</span>
-              </li>
-            ))}
-          </ul>
+        <div className="label mb-3">Modelo vs Mercado (1X2)</div>
+        {market1x2.length ? (
+          <>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-terminal-muted">
+                  <th className="text-left font-normal">Sel.</th>
+                  <th className="text-right font-normal">Modelo</th>
+                  <th className="text-right font-normal">Mercado</th>
+                  <th className="text-right font-normal">Edge</th>
+                </tr>
+              </thead>
+              <tbody className="tabular">
+                {market1x2.map((p, i) => {
+                  const edge = p.value_edge ?? 0;
+                  return (
+                    <tr key={i} className="border-t border-terminal-border">
+                      <td className="py-1.5 capitalize">{p.selection}</td>
+                      <td className="py-1.5 text-right">{pct(p.model_prob)}</td>
+                      <td className="py-1.5 text-right text-terminal-muted">
+                        {p.market_prob != null ? pct(p.market_prob) : '—'}
+                      </td>
+                      <td className={`py-1.5 text-right ${edge > 0 ? 'text-signal-up' : 'text-signal-down'}`}>
+                        {edge > 0 ? '+' : ''}{(edge * 100).toFixed(1)}%
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {valueBets.length === 0 && (
+              <p className="mt-3 text-xs text-terminal-muted">
+                Sin value señalado: el modelo aún no está calibrado (Elo anclado al mercado en
+                cold-start). El edge se activa como señal tras calibrar con resultados reales.
+              </p>
+            )}
+          </>
         ) : (
           <p className="text-sm text-terminal-muted">
-            Sin value detectado{predictions.length ? '' : ' (carga cuotas con sync-odds)'}.
+            Sin cuotas cargadas para este partido.
           </p>
         )}
       </div>
