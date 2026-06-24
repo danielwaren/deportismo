@@ -1,0 +1,24 @@
+# deps
+node_modules/
+.pnp.*
+.yarn/*
+
+# build
+dist/
+.astro/
+.vercel/
+.output/
+
+# env / secrets (NUNCA commitear la API key)
+.env
+.env.*
+!.env.example
+
+# supabase local
+supabase/.branches/
+supabase/.temp/
+
+# os / editor
+.DS_Store
+Thumbs.db
+*.log
