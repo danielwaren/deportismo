@@ -17,6 +17,30 @@ export function normalizeWeights(w: EnsembleWeights): EnsembleWeights {
   return s > 0 ? { poisson: w.poisson / s, elo: w.elo / s, context: w.context / s } : w;
 }
 
+/**
+ * Mapeo Elo -> goles esperados (lambda) para alimentar Poisson/Dixon-Coles cuando
+ * NO hay suficientes goles históricos por equipo (caso típico de selecciones, sin
+ * una "media de liga" limpia). Definición:
+ *   d = (eloHome + homeAdvantage - eloAway) / 400
+ *   lambdaHome = (mu/2) * e^( gamma * d )
+ *   lambdaAway = (mu/2) * e^(-gamma * d )
+ * Con d = 0 ambos valen mu/2 (mu = total de goles esperado). gamma controla cuánto
+ * traduce la ventaja Elo en supremacía de goles. Es un mapeo PRELIMINAR: la Fase 3
+ * lo sustituye por fuerzas ataque/defensa ajustadas a goles reales por competición.
+ */
+export function eloToLambdas(
+  eloHome: number,
+  eloAway: number,
+  opts: { mu?: number; gamma?: number; homeAdvantage?: number } = {},
+): { lambdaHome: number; lambdaAway: number } {
+  const { mu = 2.6, gamma = 1.0, homeAdvantage = 0 } = opts;
+  const d = (eloHome + homeAdvantage - eloAway) / 400;
+  return {
+    lambdaHome: (mu / 2) * Math.exp(gamma * d),
+    lambdaAway: (mu / 2) * Math.exp(-gamma * d),
+  };
+}
+
 /** Mezcla lineal de dos distribuciones 1X2 (renormalizada). Pura y testeable. */
 export function blend1x2(a: Outcome1x2, b: Outcome1x2, wA: number): Outcome1x2 {
   const wB = 1 - wA;

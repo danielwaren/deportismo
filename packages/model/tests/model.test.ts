@@ -9,6 +9,8 @@ import {
   impliedProb,
   devig,
   valueSignal,
+  eloToLambdas,
+  blend1x2,
 } from '../src/index';
 
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
@@ -56,6 +58,25 @@ describe('Elo', () => {
     const before = 1500;
     const after = updateElo(before, 0.5, 1);
     expect(after).toBeGreaterThan(before);
+  });
+});
+
+describe('Ensemble', () => {
+  it('eloToLambdas: iguales -> mismas lambdas; favorito -> lambda mayor', () => {
+    const eq = eloToLambdas(1500, 1500);
+    expect(eq.lambdaHome).toBeCloseTo(eq.lambdaAway, 6);
+    expect(eq.lambdaHome).toBeCloseTo(1.3, 6); // mu/2 con mu=2.6
+    const fav = eloToLambdas(1665, 1490);
+    expect(fav.lambdaHome).toBeGreaterThan(fav.lambdaAway);
+  });
+
+  it('blend1x2 suma 1 y queda entre ambas fuentes', () => {
+    const a = { home: 0.6, draw: 0.25, away: 0.15 };
+    const b = { home: 0.4, draw: 0.3, away: 0.3 };
+    const m = blend1x2(a, b, 0.5);
+    expect(m.home + m.draw + m.away).toBeCloseTo(1, 6);
+    expect(m.home).toBeGreaterThan(b.home);
+    expect(m.home).toBeLessThan(a.home);
   });
 });
 
