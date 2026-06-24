@@ -40,7 +40,7 @@ exception when duplicate_object then null; end $$;
 -- Helper: trigger updated_at
 -- -----------------------------------------------------------------------------
 create or replace function public.set_updated_at()
-returns trigger language plpgsql as $$
+returns trigger language plpgsql set search_path = public as $$
 begin
   new.updated_at = now();
   return new;
@@ -290,7 +290,8 @@ create index if not exists idx_predictions_fixture on public.predictions(fixture
 
 -- Vista de calibración: une predicciones con el resultado real para medir
 -- Brier score / log-loss y construir el reliability diagram en el frontend.
-create or replace view public.prediction_calibration as
+create or replace view public.prediction_calibration
+with (security_invoker = true) as
 select
   p.id,
   p.fixture_id,
