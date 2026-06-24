@@ -1,6 +1,13 @@
+import type { CalibrationPoint } from '@sti/model';
 import { supabase } from './supabase';
-import { DEMO_FIXTURES, demoDetail } from './demo';
-import type { FixtureRow, MatchDetailData, ModelOutputRow, PredictionRow } from './types';
+import { DEMO_CONFIG, DEMO_FIXTURES, demoCalibration, demoDetail } from './demo';
+import type {
+  EnsembleConfigRow,
+  FixtureRow,
+  MatchDetailData,
+  ModelOutputRow,
+  PredictionRow,
+} from './types';
 
 export const isConfigured =
   !!import.meta.env.PUBLIC_SUPABASE_URL && !!import.meta.env.PUBLIC_SUPABASE_ANON_KEY;
@@ -78,4 +85,37 @@ export async function getMatchDetail(id: number): Promise<MatchDetailData | null
     eloAway,
     source: 'supabase',
   };
+}
+
+/** Puntos de calibración (prob predicha vs resultado real) para 1X2 resueltos. */
+export async function getCalibrationPoints(): Promise<CalibrationPoint[]> {
+  if (!isConfigured) return demoCalibration();
+  const { data, error } = await supabase
+    .from('prediction_calibration')
+    .select('model_prob, outcome')
+    .not('outcome', 'is', null);
+  if (error) throw error;
+  return (data ?? []).map((r: any) => ({ prob: Number(r.model_prob), outcome: r.outcome ? 1 : 0 }));
+}
+
+/** Config de ensemble activa (para el panel admin). */
+export async function getActiveConfig(): Promise<EnsembleConfigRow> {
+  if (!isConfigured) return DEMO_CONFIG;
+  const { data, error } = await supabase
+    .from('ensemble_config')
+    .select('id,version,is_active,poisson_weight,elo_weight,context_weight,value_threshold,elo_home_adv')
+    .eq('is_active', true)
+    .maybeSingle();
+  if (error || !data) return DEMO_CONFIG;
+  return data as EnsembleConfigRow;
+}
+
+/** Guarda los pesos del ensemble. Requiere Supabase + rol admin (RLS). */
+export async function saveConfig(patch: Partial<EnsembleConfigRow> & { id?: number }): Promise<void> {
+  if (!isConfigured) {
+    throw new Error('Modo demo: conecta Supabase y usa un usuario admin para guardar.');
+  }
+  if (!patch.id) throw new Error('Falta el id de la configuración.');
+  const { error } = await supabase.from('ensemble_config').update(patch).eq('id', patch.id);
+  if (error) throw error;
 }

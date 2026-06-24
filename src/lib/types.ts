@@ -39,6 +39,17 @@ export interface PredictionRow {
   flagged_value: boolean;
 }
 
+export interface EnsembleConfigRow {
+  id?: number;
+  version: string;
+  is_active: boolean;
+  poisson_weight: number;
+  elo_weight: number;
+  context_weight: number;
+  value_threshold: number;
+  elo_home_adv: number;
+}
+
 export interface MatchDetailData {
   fixture: FixtureRow;
   model: ModelOutputRow | null;

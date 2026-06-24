@@ -1,23 +1,13 @@
 ---
 import Base from '../layouts/Base.astro';
+import CalibrationPanel from '../components/CalibrationPanel.tsx';
 ---
 
 <Base title="Calibración · STI">
   <h1 class="text-xl font-semibold">Calibración del modelo</h1>
-  <p class="mt-1 text-sm text-terminal-muted">
-    Histórico de aciertos, Brier score / log-loss y reliability diagram
-    (probabilidad predicha vs. frecuencia real). Se alimenta de la vista
-    <code class="font-mono">prediction_calibration</code>. Fase 5.
+  <p class="mb-4 mt-1 text-sm text-terminal-muted">
+    ¿Las probabilidades del modelo se cumplen en la realidad? Brier score, log-loss
+    y reliability diagram desde la vista <code class="font-mono">prediction_calibration</code>.
   </p>
-
-  <div class="mt-4 grid gap-4 sm:grid-cols-3">
-    {
-      ['Brier score', 'Log-loss', 'Aciertos 1X2'].map((m) => (
-        <div class="panel p-4">
-          <span class="label">{m}</span>
-          <p class="tabular mt-2 text-2xl text-terminal-muted">—</p>
-        </div>
-      ))
-    }
-  </div>
+  <CalibrationPanel client:load />
 </Base>

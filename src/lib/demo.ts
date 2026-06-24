@@ -2,8 +2,8 @@
 // configurado (sin PUBLIC_SUPABASE_*). En producción esto no se usa: las queries
 // leen datos reales. El modelo se calcula con @sti/model SOLO para la demo visual;
 // en producción la salida viene de match_model_outputs (Edge Function run-model).
-import { combineEnsemble, contextModifier, type ContextFactors } from '@sti/model';
-import type { FixtureRow, MatchDetailData, ModelOutputRow } from './types';
+import { combineEnsemble, contextModifier, type CalibrationPoint, type ContextFactors } from '@sti/model';
+import type { EnsembleConfigRow, FixtureRow, MatchDetailData, ModelOutputRow } from './types';
 
 const ELO: Record<string, number> = {
   Suiza: 1665,
@@ -63,6 +63,38 @@ function demoModel(home: string, away: string): ModelOutputRow {
     prob_btts: r.poisson.btts,
     most_likely_score: `${r.poisson.mostLikelyScore[0]}-${r.poisson.mostLikelyScore[1]}`,
   };
+}
+
+export const DEMO_CONFIG: EnsembleConfigRow = {
+  version: 'config-0.1.0',
+  is_active: true,
+  poisson_weight: 0.5,
+  elo_weight: 0.3,
+  context_weight: 0.2,
+  value_threshold: 0.05,
+  elo_home_adv: 65,
+};
+
+/**
+ * Dataset de calibración ILUSTRATIVO (determinista) para que el reliability
+ * diagram y las métricas tengan algo que mostrar sin datos reales. Simula un
+ * modelo levemente sobreconfiado (la frecuencia real va por debajo de lo predicho
+ * en la zona alta), que es el sesgo típico a vigilar.
+ */
+export function demoCalibration(n = 180): CalibrationPoint[] {
+  let seed = 42;
+  const rng = () => {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    return seed / 0x7fffffff;
+  };
+  const pts: CalibrationPoint[] = [];
+  for (let i = 0; i < n; i++) {
+    const prob = rng();
+    // Probabilidad real un poco menor que la predicha (sobreconfianza).
+    const trueP = Math.max(0, Math.min(1, prob - 0.06 * (prob - 0.5) * 2));
+    pts.push({ prob, outcome: rng() < trueP ? 1 : 0 });
+  }
+  return pts;
 }
 
 export function demoDetail(id: number): MatchDetailData | null {

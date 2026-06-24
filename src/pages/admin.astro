@@ -1,34 +1,18 @@
 ---
 import Base from '../layouts/Base.astro';
 import QuotaMeter from '../components/QuotaMeter.tsx';
+import AdminWeights from '../components/AdminWeights.tsx';
 ---
 
 <Base title="Admin · STI">
   <h1 class="text-xl font-semibold">Panel de administración</h1>
-  <p class="mt-1 text-sm text-terminal-muted">
-    Ajuste de pesos del ensemble (Poisson / Elo / Contexto) y consumo de cuota.
-    La edición requiere rol <code class="font-mono">admin</code> (RLS). Fase 5.
+  <p class="mb-4 mt-1 text-sm text-terminal-muted">
+    Ajusta los pesos del ensemble y vigila el consumo de cuota. La edición persiste
+    solo con Supabase y un usuario con rol <code class="font-mono">admin</code> (RLS).
   </p>
 
-  <div class="mt-4 grid gap-4 lg:grid-cols-2">
-    <div class="panel p-4">
-      <span class="label">Pesos del ensemble (config activa)</span>
-      <div class="mt-3 space-y-3 text-sm">
-        {
-          [
-            ['Poisson / Dixon-Coles', '0.50'],
-            ['Elo', '0.30'],
-            ['Ajuste contextual', '0.20'],
-            ['Umbral de value', '0.05'],
-          ].map(([k, v]) => (
-            <div class="flex items-center justify-between">
-              <span class="text-terminal-muted">{k}</span>
-              <span class="tabular">{v}</span>
-            </div>
-          ))
-        }
-      </div>
-    </div>
+  <div class="grid gap-4 lg:grid-cols-2">
+    <AdminWeights client:load />
     <QuotaMeter client:load />
   </div>
 </Base>
