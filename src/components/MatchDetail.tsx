@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { buildScoreMatrix } from '@sti/model';
 import { getMatchDetail } from '../lib/queries';
 import type { MatchDetailData } from '../lib/types';
 import Prob1x2 from './Prob1x2';
@@ -84,8 +85,29 @@ export default function MatchDetail({ id }: { id: number }) {
             <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
               <Stat label="Over 2.5" value={pct(model.prob_over_25)} />
               <Stat label="BTTS" value={pct(model.prob_btts)} />
-              <Stat label="Marcador" value={model.most_likely_score} />
-              <Stat label="λ esperados" value={`${model.lambda_home.toFixed(2)}/${model.lambda_away.toFixed(2)}`} />
+              <Stat label="Goles esp. (λ)" value={`${model.lambda_home.toFixed(2)} / ${model.lambda_away.toFixed(2)}`} />
+              <Stat label="Total esperado" value={(model.lambda_home + model.lambda_away).toFixed(2)} />
+            </div>
+
+            {/* Marcadores más probables (top-3, calculados desde las λ). En fútbol
+                el modal suele ser 1-1 con ~12%: por eso se muestran 3 con su prob. */}
+            <div className="mt-3">
+              <div className="label mb-2">Marcadores más probables</div>
+              <div className="flex flex-wrap gap-2">
+                {buildScoreMatrix(model.lambda_home, model.lambda_away)
+                  .topScores.slice(0, 3)
+                  .map((s, i) => (
+                    <div
+                      key={i}
+                      className="flex items-baseline gap-2 rounded-md border border-terminal-border bg-terminal-bg px-3 py-1.5"
+                    >
+                      <span className="tabular text-sm font-medium">
+                        {s.score[0]}-{s.score[1]}
+                      </span>
+                      <span className="tabular text-xs text-terminal-muted">{pct(s.p)}</span>
+                    </div>
+                  ))}
+              </div>
             </div>
           </>
         ) : (

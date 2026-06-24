@@ -59,8 +59,7 @@ export function buildScoreMatrix(
     away = 0,
     btts = 0;
   const over = { '1.5': 0, '2.5': 0, '3.5': 0 };
-  let best = 0;
-  let bestScore: [number, number] = [0, 0];
+  const cells: Array<{ score: [number, number]; p: number }> = [];
 
   for (let h = 0; h <= maxGoals; h++) {
     for (let a = 0; a <= maxGoals; a++) {
@@ -73,12 +72,15 @@ export function buildScoreMatrix(
       if (tot > 1.5) over['1.5'] += p;
       if (tot > 2.5) over['2.5'] += p;
       if (tot > 3.5) over['3.5'] += p;
-      if (p > best) {
-        best = p;
-        bestScore = [h, a];
-      }
+      cells.push({ score: [h, a], p });
     }
   }
+
+  // Top marcadores exactos por probabilidad. OJO: en fútbol el marcador modal
+  // suele ser 1-1 o 1-0 (la masa se reparte entre muchos marcadores), así que el
+  // "más probable" rara vez supera ~12% — por eso se expone su probabilidad.
+  cells.sort((x, y) => y.p - x.p);
+  const topScores = cells.slice(0, 5).map((c) => ({ score: c.score, p: c.p }));
 
   return {
     lambdaHome,
@@ -87,7 +89,8 @@ export function buildScoreMatrix(
     oneXtwo: { home, draw, away },
     over,
     btts,
-    mostLikelyScore: bestScore,
+    mostLikelyScore: topScores[0]!.score,
+    topScores,
   };
 }
 

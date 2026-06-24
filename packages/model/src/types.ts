@@ -33,6 +33,7 @@ export interface PoissonOutput {
   over: { '1.5': number; '2.5': number; '3.5': number };
   btts: number;            // ambos marcan
   mostLikelyScore: [number, number];
+  topScores: Array<{ score: [number, number]; p: number }>; // top-5 marcadores
 }
 
 /** Modificadores contextuales (el "ojo del trader"), normalizados ~[-1, 1]. */

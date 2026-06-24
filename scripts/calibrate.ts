@@ -73,6 +73,10 @@ for (const [fid, home, away] of FIX) {
   const e = eloToOneXtwo(E(home), E(away), { homeAdvantage: 0, kBase: 30 }, NU);
   const f = blend1x2(p.oneXtwo, e, 0.625);
 
+  const top3 = p.topScores.slice(0, 3).map((s) => ({ s: `${s.score[0]}-${s.score[1]}`, p: +s.p.toFixed(3) }));
+  // Prueba legible (stderr): demuestra que el marcador se calcula y su probabilidad.
+  console.error(`fix ${fid}: top3 = ${top3.map((t) => `${t.s} (${(t.p * 100).toFixed(1)}%)`).join(', ')}`);
+
   for (const tid of [home, away]) if (!seenTeams.has(tid)) { seenTeams.add(tid); eloVals.push(`(${tid},${Math.round(E(tid))})`); }
   outVals.push(`(${fid},'dc-elo-ctx-0.1.0',${lambdaHome.toFixed(3)},${lambdaAway.toFixed(3)},${r4(f.home)},${r4(f.draw)},${r4(f.away)},${r4(p.over['1.5'])},${r4(p.over['2.5'])},${r4(p.over['3.5'])},${r4(p.btts)},'${p.mostLikelyScore[0]}-${p.mostLikelyScore[1]}')`);
   // predicciones solo para los fixtures sin odds aún (6..16); 1-5 ya están
