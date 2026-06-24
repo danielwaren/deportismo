@@ -96,8 +96,20 @@ supabase/
 
 ## Roadmap por fases
 
-1. ✅ **Esquema + arquitectura** (este commit set).
-2. Edge Functions + sync de datos (rate-limit + caché).
-3. Módulo del modelo completo (Dixon-Coles + Elo + contexto) con tests.
-4. Frontend conectado a Supabase.
-5. Panel de calibración.
+1. ✅ **Esquema + arquitectura** — `schema.sql` con RLS, scaffolding.
+2. ✅ **Edge Functions + sync** — cliente API-Football (caché + cuota + rate-limit),
+   `sync-fixtures/injuries/odds`.
+3. ✅ **Modelo completo** — Dixon-Coles + Elo + contexto, `run-model`, 21 tests.
+4. ✅ **Frontend conectado** — dashboard, ficha de partido, modo demo.
+5. ✅ **Calibración + admin** — Brier/log-loss + reliability diagram, editor de pesos.
+
+**Pendiente (despliegue):** añadir el adapter SSR de Vercel en `astro.config.mjs`
+(`output: 'server'` + `@astrojs/vercel`) para que `npm run build` y las rutas
+dinámicas funcionen en producción; crear el proyecto Supabase y cargar el secret
+`API_FOOTBALL_KEY`.
+
+## Modo demo
+
+Sin `PUBLIC_SUPABASE_*`, la app arranca en **modo demo**: puebla la UI con dos
+partidos de ejemplo y calcula el modelo en el cliente (etiquetado en pantalla).
+Con Supabase configurado, lee datos reales y el modelo viene de `run-model`.
