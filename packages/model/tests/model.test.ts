@@ -17,6 +17,9 @@ import {
   formScore,
   restAdvantage,
   h2hScore,
+  brierScore,
+  logLoss,
+  reliabilityBins,
 } from '../src/index';
 
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
@@ -133,6 +136,40 @@ describe('combineEnsemble', () => {
     const con = combineEnsemble({ eloHome: 1500, eloAway: 1500, context: 1 });
     expect(con.final.home).toBeGreaterThan(sin.final.home);
     expect(con.lambdaHome).toBeGreaterThan(con.lambdaAway);
+  });
+});
+
+describe('Calibración', () => {
+  const perfecto = [
+    { prob: 1, outcome: 1 as const },
+    { prob: 0, outcome: 0 as const },
+  ];
+  const malo = [
+    { prob: 0, outcome: 1 as const },
+    { prob: 1, outcome: 0 as const },
+  ];
+
+  it('brierScore: 0 perfecto, 1 pésimo', () => {
+    expect(brierScore(perfecto)).toBeCloseTo(0, 6);
+    expect(brierScore(malo)).toBeCloseTo(1, 6);
+    expect(brierScore([{ prob: 0.5, outcome: 1 }])).toBeCloseTo(0.25, 6);
+  });
+
+  it('logLoss penaliza la confianza equivocada', () => {
+    expect(logLoss(perfecto)).toBeLessThan(0.01);
+    expect(logLoss(malo)).toBeGreaterThan(10);
+  });
+
+  it('reliabilityBins reparte los puntos y mide la frecuencia real', () => {
+    const pts = [
+      { prob: 0.05, outcome: 0 as const },
+      { prob: 0.15, outcome: 0 as const },
+      { prob: 0.95, outcome: 1 as const },
+    ];
+    const bins = reliabilityBins(pts, 10);
+    expect(bins).toHaveLength(10);
+    expect(bins.reduce((s, b) => s + b.count, 0)).toBe(3);
+    expect(bins[9]!.observed).toBe(1); // el de prob 0.95 acertó
   });
 });
 
