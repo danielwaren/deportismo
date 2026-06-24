@@ -129,8 +129,10 @@ export default function MatchDetail({ id }: { id: number }) {
             </table>
             {valueBets.length === 0 && (
               <p className="mt-3 text-xs text-terminal-muted">
-                Sin value señalado: el modelo aún no está calibrado (Elo anclado al mercado en
-                cold-start). El edge se activa como señal tras calibrar con resultados reales.
+                Señales de value desactivadas: modelo v1 calibrado con histórico reciente
+                (μ y tasa de empate reales), pero el Elo aún no normaliza la fuerza de
+                confederación. Por eso una divergencia grande con el mercado (típico en
+                cruces inter-confederación) puede ser sesgo del modelo, no value real.
               </p>
             )}
           </>

@@ -41,7 +41,8 @@ export function eloToLambdas(
   eloAway: number,
   opts: { mu?: number; gamma?: number; homeAdvantage?: number } = {},
 ): { lambdaHome: number; lambdaAway: number } {
-  const { mu = 2.6, gamma = 1.0, homeAdvantage = 0 } = opts;
+  // mu = 2.78 calibrado: media de goles real en 113 partidos 2022-2025.
+  const { mu = 2.78, gamma = 1.0, homeAdvantage = 0 } = opts;
   const d = (eloHome + homeAdvantage - eloAway) / 400;
   return {
     lambdaHome: (mu / 2) * Math.exp(gamma * d),

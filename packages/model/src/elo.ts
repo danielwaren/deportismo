@@ -27,7 +27,10 @@ export function eloToOneXtwo(
   eloHome: number,
   eloAway: number,
   params: EloParams = DEFAULT_ELO,
-  nu = 0.32,
+  // nu = 0.60 calibrado: casa la tasa de empate real (~24.8%) observada en 113
+  // partidos de selección 2022-2025 (ver scripts/calibrate.ts). El 0.32 inicial
+  // sub-pesaba los empates.
+  nu = 0.6,
 ): { home: number; draw: number; away: number } {
   const dh = eloHome + params.homeAdvantage;
   const wHome = Math.pow(10, dh / 400);

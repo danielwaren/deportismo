@@ -74,7 +74,7 @@ describe('Ensemble', () => {
   it('eloToLambdas: iguales -> mismas lambdas; favorito -> lambda mayor', () => {
     const eq = eloToLambdas(1500, 1500);
     expect(eq.lambdaHome).toBeCloseTo(eq.lambdaAway, 6);
-    expect(eq.lambdaHome).toBeCloseTo(1.3, 6); // mu/2 con mu=2.6
+    expect(eq.lambdaHome).toBeCloseTo(1.39, 6); // mu/2 con mu=2.78 (calibrado)
     const fav = eloToLambdas(1665, 1490);
     expect(fav.lambdaHome).toBeGreaterThan(fav.lambdaAway);
   });
