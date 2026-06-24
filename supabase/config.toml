@@ -1,0 +1,6 @@
+# Configuración mínima del proyecto Supabase local.
+# `supabase init` puede regenerar/ampliar este archivo.
+project_id = "sports-trader-intelligence"
+
+[functions.run-model]
+verify_jwt = false
