@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  @apply bg-terminal-bg text-terminal-text font-sans antialiased;
+}
+
+/* Cifras y datos siempre en mono, alineadas como en una terminal. */
+.tabular {
+  @apply font-mono tabular-nums;
+}
+
+.panel {
+  @apply bg-terminal-panel border border-terminal-border rounded-lg;
+}
+
+.label {
+  @apply text-xs uppercase tracking-wider text-terminal-muted;
+}

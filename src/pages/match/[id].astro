@@ -1,0 +1,14 @@
+---
+import Base from '../../layouts/Base.astro';
+const { id } = Astro.params;
+---
+
+<Base title={`Partido ${id} · STI`}>
+  <a href="/" class="text-sm text-terminal-muted hover:text-terminal-text">&larr; Dashboard</a>
+  <h1 class="mt-2 text-xl font-semibold">Ficha de partido #{id}</h1>
+  <p class="mt-1 text-sm text-terminal-muted">
+    Aquí irán: ranking Elo de ambos equipos, forma reciente, lesionados,
+    H2H, salida del modelo (probabilidades + marcador probable) y value bets.
+    Se conecta a Supabase en la Fase 4.
+  </p>
+</Base>

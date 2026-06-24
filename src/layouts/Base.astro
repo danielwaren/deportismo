@@ -1,0 +1,60 @@
+---
+import '../styles/global.css';
+
+interface Props {
+  title?: string;
+}
+const { title = 'Sports Trader Intelligence' } = Astro.props;
+
+const nav = [
+  { href: '/', label: 'Dashboard' },
+  { href: '/calibration', label: 'Calibración' },
+  { href: '/admin', label: 'Admin' },
+];
+const path = Astro.url.pathname;
+---
+
+<!doctype html>
+<html lang="es" class="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+  </head>
+  <body class="min-h-screen">
+    <header class="border-b border-terminal-border bg-terminal-panel/60 backdrop-blur">
+      <div class="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
+        <a href="/" class="flex items-center gap-2">
+          <span class="h-2 w-2 rounded-full bg-signal-up animate-pulse"></span>
+          <span class="font-mono text-sm font-semibold tracking-tight">STI</span>
+          <span class="label hidden sm:inline">Sports Trader Intelligence</span>
+        </a>
+        <nav class="flex items-center gap-1 text-sm">
+          {
+            nav.map((n) => (
+              <a
+                href={n.href}
+                class={`rounded px-3 py-1.5 transition-colors ${
+                  path === n.href
+                    ? 'bg-terminal-border text-terminal-text'
+                    : 'text-terminal-muted hover:text-terminal-text'
+                }`}
+              >
+                {n.label}
+              </a>
+            ))
+          }
+        </nav>
+      </div>
+    </header>
+
+    <main class="mx-auto max-w-7xl px-4 py-6">
+      <slot />
+    </main>
+
+    <footer class="mx-auto max-w-7xl px-4 py-8 text-xs text-terminal-muted">
+      Modelo ensemble (Dixon-Coles · Elo · contexto). Datos vía API-Football (plan
+      free, 100 req/día). No es asesoría de apuestas.
+    </footer>
+  </body>
+</html>
