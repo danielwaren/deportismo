@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { isConfigured } from '../lib/queries';
 
 // Medidor de cuota diaria de API-Football. Lee el conteo del día desde
 // api_request_log vía una RPC/función (se implementa en Fase 2). Por ahora
@@ -10,9 +11,11 @@ export default function QuotaMeter() {
   const [used, setUsed] = useState<number | null>(null);
 
   useEffect(() => {
-    // Fase 2: reemplazar por supabase.rpc('api_requests_today').
-    // De momento dejamos el placeholder sin tocar cuota real.
     let active = true;
+    if (!isConfigured) {
+      setUsed(0); // modo demo: sin consumo real
+      return;
+    }
     (async () => {
       const { data } = await supabase.rpc('api_requests_today').then(
         (r) => r,

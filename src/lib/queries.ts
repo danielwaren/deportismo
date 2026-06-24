@@ -1,0 +1,81 @@
+import { supabase } from './supabase';
+import { DEMO_FIXTURES, demoDetail } from './demo';
+import type { FixtureRow, MatchDetailData, ModelOutputRow, PredictionRow } from './types';
+
+export const isConfigured =
+  !!import.meta.env.PUBLIC_SUPABASE_URL && !!import.meta.env.PUBLIC_SUPABASE_ANON_KEY;
+
+const FIXTURE_SELECT =
+  'id,kickoff,status,round,home_goals,away_goals,' +
+  'home:home_team_id(id,name,short_name,logo),' +
+  'away:away_team_id(id,name,short_name,logo),' +
+  'league:league_id(name)';
+
+/** Próximos partidos (o todos los del seed en demo). */
+export async function listFixtures(search = ''): Promise<FixtureRow[]> {
+  if (!isConfigured) {
+    const t = search.toLowerCase();
+    return DEMO_FIXTURES.filter(
+      (f) => !t || f.home.name.toLowerCase().includes(t) || f.away.name.toLowerCase().includes(t),
+    );
+  }
+  let q = supabase.from('fixtures').select(FIXTURE_SELECT).order('kickoff', { ascending: true }).limit(50);
+  const { data, error } = await q;
+  if (error) throw error;
+  let rows = (data ?? []) as unknown as FixtureRow[];
+  if (search) {
+    const t = search.toLowerCase();
+    rows = rows.filter((f) => f.home.name.toLowerCase().includes(t) || f.away.name.toLowerCase().includes(t));
+  }
+  return rows;
+}
+
+async function latestElo(teamId: number): Promise<number | null> {
+  const { data } = await supabase
+    .from('team_elo_history')
+    .select('elo')
+    .eq('team_id', teamId)
+    .order('as_of', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return data ? Number(data.elo) : null;
+}
+
+/** Ficha completa de un partido. */
+export async function getMatchDetail(id: number): Promise<MatchDetailData | null> {
+  if (!isConfigured) return demoDetail(id);
+
+  const { data: fixture, error } = await supabase
+    .from('fixtures')
+    .select(FIXTURE_SELECT)
+    .eq('id', id)
+    .single();
+  if (error || !fixture) return null;
+  const fx = fixture as unknown as FixtureRow;
+
+  const [{ data: model }, { data: preds }, eloHome, eloAway] = await Promise.all([
+    supabase
+      .from('match_model_outputs')
+      .select('lambda_home,lambda_away,prob_home,prob_draw,prob_away,prob_over_25,prob_btts,most_likely_score')
+      .eq('fixture_id', id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from('predictions')
+      .select('market,selection,model_prob,market_prob,value_edge,flagged_value')
+      .eq('fixture_id', id)
+      .order('created_at', { ascending: false }),
+    latestElo(fx.home.id),
+    latestElo(fx.away.id),
+  ]);
+
+  return {
+    fixture: fx,
+    model: (model as ModelOutputRow) ?? null,
+    predictions: (preds as PredictionRow[]) ?? [],
+    eloHome,
+    eloAway,
+    source: 'supabase',
+  };
+}

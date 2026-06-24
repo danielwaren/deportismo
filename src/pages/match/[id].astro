@@ -1,14 +1,22 @@
 ---
 import Base from '../../layouts/Base.astro';
+import MatchDetail from '../../components/MatchDetail.tsx';
+// Ruta dinámica renderizada on-demand (los ids no se conocen en build). En Vercel
+// requiere el adapter SSR (output: 'server'); ver astro.config.mjs.
+export const prerender = false;
 const { id } = Astro.params;
+const fixtureId = Number(id);
 ---
 
 <Base title={`Partido ${id} · STI`}>
   <a href="/" class="text-sm text-terminal-muted hover:text-terminal-text">&larr; Dashboard</a>
-  <h1 class="mt-2 text-xl font-semibold">Ficha de partido #{id}</h1>
-  <p class="mt-1 text-sm text-terminal-muted">
-    Aquí irán: ranking Elo de ambos equipos, forma reciente, lesionados,
-    H2H, salida del modelo (probabilidades + marcador probable) y value bets.
-    Se conecta a Supabase en la Fase 4.
-  </p>
+  <div class="mt-3">
+    {
+      Number.isFinite(fixtureId) ? (
+        <MatchDetail id={fixtureId} client:load />
+      ) : (
+        <p class="text-sm text-signal-down">ID de partido inválido.</p>
+      )
+    }
+  </div>
 </Base>
