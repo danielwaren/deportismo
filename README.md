@@ -121,6 +121,20 @@ supabase/
 > `PUBLIC_SUPABASE_*` se *inlinean* en build desde `.env`; en Vercel conviene
 > añadirlas también como Environment Variables del proyecto para builds remotos.
 
+## Entrenamiento automático
+
+El sistema se **entrena solo** vía `pg_cron` + `pg_net` (todo dentro de Supabase,
+ver `supabase/automation.sql`). Dos veces al día llama a API-Football, añade los
+partidos nuevos, registra resultados y **actualiza el Elo de cada equipo** con
+cada resultado (aprendizaje online). La vista `prediction_calibration` recalcula
+el Brier score sola.
+
+- **Sí automático:** resultados + Elo + Brier.
+- **Aún manual:** el recálculo de las probabilidades Dixon-Coles de los partidos
+  por jugar (usa la librería TS); se automatizaría con una Edge Function programada.
+- **Honestidad de calibración:** las predicciones de partidos ya jugados quedan
+  *congeladas* en su valor pre-partido (sin look-ahead).
+
 ## Modo demo
 
 Sin `PUBLIC_SUPABASE_*`, la app arranca en **modo demo**: puebla la UI con dos
