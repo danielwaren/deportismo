@@ -129,11 +129,16 @@ partidos nuevos, registra resultados y **actualiza el Elo de cada equipo** con
 cada resultado (aprendizaje online). La vista `prediction_calibration` recalcula
 el Brier score sola.
 
-- **Sí automático:** resultados + Elo + Brier.
-- **Aún manual:** el recálculo de las probabilidades Dixon-Coles de los partidos
-  por jugar (usa la librería TS); se automatizaría con una Edge Function programada.
+El pipeline es **100% automático** (6 cron jobs, 2 ciclos/día):
+`:00` fetch resultados → `:10` registra + **entrena Elo** → `:15` la Edge Function
+`recompute-models` **recalcula las probabilidades** Dixon-Coles de los partidos por
+jugar con el Elo recién entrenado.
+
 - **Honestidad de calibración:** las predicciones de partidos ya jugados quedan
-  *congeladas* en su valor pre-partido (sin look-ahead).
+  *congeladas* en su valor pre-partido (recompute solo toca fixtures `scheduled`).
+- La Edge Function vendoriza el modelo (`supabase/functions/recompute-models/model.ts`)
+  porque Deno no resuelve imports relativos sin extensión; mantenerla en sync con
+  `packages/model`.
 
 ## Modo demo
 

@@ -94,8 +94,21 @@ begin
   return 'fixtures_sync='||up||' elo_trained='||trained;
 end $$;
 
--- PROGRAMACIÓN: 2 ciclos diarios (4 req/día). fetch -> proceso 10 min después.
-select cron.schedule('wc-fetch-am',   '0 6 * * *',   $$select public.auto_fetch();$$);
-select cron.schedule('wc-process-am', '10 6 * * *',  $$select public.auto_process();$$);
-select cron.schedule('wc-fetch-pm',   '0 18 * * *',  $$select public.auto_fetch();$$);
-select cron.schedule('wc-process-pm', '10 18 * * *', $$select public.auto_process();$$);
+-- PROGRAMACIÓN (pipeline 100% automático, 2 ciclos diarios, 4 req/día):
+--   :00 fetch (resultados) -> :10 process (registra + entrena Elo)
+--   -> :15 recompute (Edge Function recompute-models recalcula probabilidades
+--      Dixon-Coles de los partidos por jugar con el Elo recién entrenado).
+select cron.schedule('wc-fetch-am',     '0 6 * * *',   $$select public.auto_fetch();$$);
+select cron.schedule('wc-process-am',   '10 6 * * *',  $$select public.auto_process();$$);
+select cron.schedule('wc-fetch-pm',     '0 18 * * *',  $$select public.auto_fetch();$$);
+select cron.schedule('wc-process-pm',   '10 18 * * *', $$select public.auto_process();$$);
+
+-- Recompute via Edge Function (verify_jwt=false; clave publishable):
+select cron.schedule('wc-recompute-am', '15 6 * * *',
+  $$select net.http_post(url:='https://<PROJECT>.supabase.co/functions/v1/recompute-models',
+    headers:=jsonb_build_object('Content-Type','application/json','Authorization','Bearer <PUBLISHABLE_KEY>'),
+    body:='{}'::jsonb)$$);
+select cron.schedule('wc-recompute-pm', '15 18 * * *',
+  $$select net.http_post(url:='https://<PROJECT>.supabase.co/functions/v1/recompute-models',
+    headers:=jsonb_build_object('Content-Type','application/json','Authorization','Bearer <PUBLISHABLE_KEY>'),
+    body:='{}'::jsonb)$$);
