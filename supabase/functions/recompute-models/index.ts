@@ -27,13 +27,15 @@ Deno.serve(async () => {
   try {
     const { data: fixtures } = await admin
       .from('fixtures')
-      .select('id, home_team_id, away_team_id')
+      .select('id, home_team_id, away_team_id, league:league_id(elo_home_adv)')
       .eq('status', 'scheduled');
 
     let n = 0;
     for (const fx of fixtures ?? []) {
       const [eh, ea] = await Promise.all([latestElo(fx.home_team_id), latestElo(fx.away_team_id)]);
-      const r = combineEnsemble({ eloHome: eh, eloAway: ea, homeAdvantage: 0, context: 0 });
+      // Ventaja de local de la liga (0 en torneos neutros como el Mundial, ~65 en liga).
+      const homeAdv = Number((fx as any).league?.elo_home_adv ?? 0);
+      const r = combineEnsemble({ eloHome: eh, eloAway: ea, homeAdvantage: homeAdv, context: 0 });
 
       await admin.from('match_model_outputs').upsert(
         {

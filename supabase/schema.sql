@@ -80,6 +80,8 @@ create table if not exists public.leagues (
   season      int not null,                          -- importante: el plan free
                                                       -- restringe temporadas
   logo        text,
+  elo_home_adv numeric not null default 65,           -- ventaja de local (0 en
+                                                      -- torneos neutros como el Mundial)
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now(),
   unique (api_id, season, sport)

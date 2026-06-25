@@ -27,14 +27,16 @@ create or replace function public.train_elo() returns int language plpgsql
 security definer set search_path=public as $$
 declare r record; eh numeric; ea numeric; we numeric; w numeric; k numeric; gd int; mult numeric; n int:=0;
 begin
-  for r in select * from public.fixtures
-           where status='finished' and not elo_applied
-             and home_goals is not null and away_goals is not null
-           order by kickoff loop
+  for r in select f.*, coalesce(l.elo_home_adv,0) as ha
+           from public.fixtures f left join public.leagues l on l.id=f.league_id
+           where f.status='finished' and not f.elo_applied
+             and f.home_goals is not null and f.away_goals is not null
+           order by f.kickoff loop
     select elo into eh from public.team_elo_history where team_id=r.home_team_id order by as_of desc limit 1;
     select elo into ea from public.team_elo_history where team_id=r.away_team_id order by as_of desc limit 1;
     eh:=coalesce(eh,1500); ea:=coalesce(ea,1500);
-    we:=1.0/(1.0+power(10,(ea-eh)/400.0));
+    -- ventaja de local de la liga (0 en torneos neutros).
+    we:=1.0/(1.0+power(10,(ea-(eh+r.ha))/400.0));
     w := case when r.home_goals>r.away_goals then 1 when r.home_goals<r.away_goals then 0 else 0.5 end;
     gd:=abs(r.home_goals-r.away_goals);
     mult:=case when gd<=1 then 1 when gd=2 then 1.5 else (11+gd)/8.0 end;
@@ -62,30 +64,36 @@ begin
   on conflict (k) do update set v=excluded.v;
 end $$;
 
--- PROCESS: lee las respuestas, upserta equipos+fixtures del Mundial (league 1),
--- actualiza resultados y entrena el Elo.
+-- PROCESS: lee las respuestas, upserta equipos+fixtures de las ligas seguidas
+-- (1 = Mundial, 265 = Primera de Chile), actualiza resultados y entrena el Elo.
+-- Multi-liga: resuelve/crea la liga por (api_id, season) con su elo_home_adv.
 create or replace function public.auto_process() returns text language plpgsql
 security definer set search_path=public as $$
 declare ids bigint[]; fx jsonb; lid bigint; hid bigint; aid bigint; trained int; up int:=0;
 begin
   select string_to_array(v,',')::bigint[] into ids from public.app_config where k='last_fetch_ids';
-  select id into lid from public.leagues where api_id=1 and season=2026;
   for fx in
     select f from net._http_response resp, jsonb_array_elements(resp.content::jsonb->'response') f
-    where resp.id = any(ids) and (resp.content::jsonb->'errors')='[]'::jsonb and f->'league'->>'id'='1'
+    where resp.id = any(ids) and (resp.content::jsonb->'errors')='[]'::jsonb
+      and (f->'league'->>'id')::int in (1,265)
   loop
+    insert into public.leagues(api_id,sport,name,country,type,season,elo_home_adv)
+    values ((fx->'league'->>'id')::bigint,'football',fx->'league'->>'name',fx->'league'->>'country','league',
+            (fx->'league'->>'season')::int, case when (fx->'league'->>'id')::int=1 then 0 else 65 end)
+    on conflict (api_id,season,sport) do nothing;
+    select id into lid from public.leagues where api_id=(fx->'league'->>'id')::bigint and season=(fx->'league'->>'season')::int;
     insert into public.teams(api_id,sport,name,short_name,country,logo) values
-      ((fx->'teams'->'home'->>'id')::bigint,'football',fx->'teams'->'home'->>'name',upper(left(fx->'teams'->'home'->>'name',3)),fx->'teams'->'home'->>'name',fx->'teams'->'home'->>'logo')
+      ((fx->'teams'->'home'->>'id')::bigint,'football',fx->'teams'->'home'->>'name',upper(left(fx->'teams'->'home'->>'name',3)),fx->'league'->>'country',fx->'teams'->'home'->>'logo')
       on conflict (api_id,sport) do nothing;
     insert into public.teams(api_id,sport,name,short_name,country,logo) values
-      ((fx->'teams'->'away'->>'id')::bigint,'football',fx->'teams'->'away'->>'name',upper(left(fx->'teams'->'away'->>'name',3)),fx->'teams'->'away'->>'name',fx->'teams'->'away'->>'logo')
+      ((fx->'teams'->'away'->>'id')::bigint,'football',fx->'teams'->'away'->>'name',upper(left(fx->'teams'->'away'->>'name',3)),fx->'league'->>'country',fx->'teams'->'away'->>'logo')
       on conflict (api_id,sport) do nothing;
     select id into hid from public.teams where api_id=(fx->'teams'->'home'->>'id')::bigint and sport='football';
     select id into aid from public.teams where api_id=(fx->'teams'->'away'->>'id')::bigint and sport='football';
     insert into public.fixtures(api_id,sport,league_id,home_team_id,away_team_id,kickoff,status,round,importance_weight,home_goals,away_goals)
     values ((fx->'fixture'->>'id')::bigint,'football',lid,hid,aid,(fx->'fixture'->>'date')::timestamptz,
       (case when fx->'fixture'->'status'->>'short'='FT' then 'finished' else 'scheduled' end)::fixture_status,
-      fx->'league'->>'round',1.30,(fx->'goals'->>'home')::int,(fx->'goals'->>'away')::int)
+      fx->'league'->>'round',1.0,(fx->'goals'->>'home')::int,(fx->'goals'->>'away')::int)
     on conflict (api_id,sport) do update set
       status=excluded.status, home_goals=excluded.home_goals, away_goals=excluded.away_goals;
     up := up+1;
