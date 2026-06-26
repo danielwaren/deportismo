@@ -120,3 +120,54 @@ select cron.schedule('wc-recompute-pm', '15 18 * * *',
   $$select net.http_post(url:='https://<PROJECT>.supabase.co/functions/v1/recompute-models',
     headers:=jsonb_build_object('Content-Type','application/json','Authorization','Bearer <PUBLISHABLE_KEY>'),
     body:='{}'::jsonb)$$);
+
+-- =============================================================================
+-- PRIMERA DE CHILE — auto-scraping (la temporada 2026 NO está en API-Football
+-- free, así que se baja de campeonatochileno.cl y se parsea con regex sobre el
+-- HTML del plugin AnWP). No gasta cuota de API-Football.
+-- =============================================================================
+create or replace function public.scrape_chile() returns void language plpgsql
+security definer set search_path=public as $$
+declare rid bigint;
+begin
+  rid := net.http_get(url:='https://www.campeonatochileno.cl/ligas/liga-de-primera-mercado-libre/');
+  insert into public.app_config(k,v) values ('chile_req_id', rid::text)
+  on conflict (k) do update set v=excluded.v;
+end $$;
+
+create or replace function public.process_chile() returns text language plpgsql
+security definer set search_path=public as $$
+declare rid bigint; lid bigint; nu int; ni int; matched int; trained int;
+begin
+  select v::bigint into rid from public.app_config where k='chile_req_id';
+  select id into lid from public.leagues where api_id=265 and season=2026;
+  create temporary table _cl on commit drop as
+  with resp as (select content c from net._http_response where id=rid),
+  chunks as (select x chunk from resp, regexp_split_to_table(c,'match-slim__team-home-title') x)
+  select replace(trim((regexp_match(chunk,'^[^>]*>\s*([^<]+?)\s*</div>'))[1]),'&#039;','''') home,
+         replace(trim((regexp_match(chunk,'match-slim__team-away-title[^>]*>\s*([^<]+?)\s*</div>'))[1]),'&#039;','''') away,
+         (regexp_match(chunk,'match-slim__scores-home[^>]*>\s*([0-9]+)\s*</span>'))[1]::int hg,
+         (regexp_match(chunk,'match-slim__scores-away[^>]*>\s*([0-9]+)\s*</span>'))[1]::int ag
+  from chunks;
+  -- actualizar partidos que pasaron a jugados
+  update public.fixtures f set home_goals=p.hg, away_goals=p.ag, status='finished'
+  from _cl p
+  join public.teams h on h.name=p.home and h.country='Chile' and h.sport='football'
+  join public.teams a on a.name=p.away and a.country='Chile' and a.sport='football'
+  where f.home_team_id=h.id and f.away_team_id=a.id and p.hg is not null and f.status='scheduled';
+  get diagnostics nu = row_count;
+  -- insertar fechas nuevas jugadas que no estaban
+  insert into public.fixtures (api_id,sport,league_id,home_team_id,away_team_id,kickoff,status,round,importance_weight,home_goals,away_goals,elo_applied)
+  select -(500000 + h.id*10000 + a.id),'football',lid,h.id,a.id,now(),'finished'::fixture_status,'Liga 2026',1.0,p.hg,p.ag,false
+  from _cl p
+  join public.teams h on h.name=p.home and h.country='Chile' and h.sport='football'
+  join public.teams a on a.name=p.away and a.country='Chile' and a.sport='football'
+  where p.hg is not null
+    and not exists (select 1 from public.fixtures f2 where f2.home_team_id=h.id and f2.away_team_id=a.id and f2.league_id=lid);
+  get diagnostics ni = row_count;
+  trained := public.train_elo();
+  return 'updated='||nu||' inserted='||ni||' elo_trained='||trained;
+end $$;
+
+select cron.schedule('cl-scrape',  '0 5 * * *',  $$select public.scrape_chile();$$);
+select cron.schedule('cl-process', '10 5 * * *', $$select public.process_chile();$$);
