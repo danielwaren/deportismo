@@ -16,17 +16,19 @@ const FIXTURE_SELECT =
   'id,kickoff,status,round,home_goals,away_goals,' +
   'home:home_team_id(id,name,short_name,logo),' +
   'away:away_team_id(id,name,short_name,logo),' +
-  'league:league_id(name)';
+  'league:league_id!inner(api_id,name)';
 
-/** Próximos partidos (o todos los del seed en demo). */
-export async function listFixtures(search = ''): Promise<FixtureRow[]> {
+/** Partidos de una liga (api_id: 1 = Mundial, 265 = Primera de Chile). */
+export async function listFixtures(search = '', leagueApiId?: number): Promise<FixtureRow[]> {
   if (!isConfigured) {
+    if (leagueApiId && leagueApiId !== 1) return [];
     const t = search.toLowerCase();
     return DEMO_FIXTURES.filter(
       (f) => !t || f.home.name.toLowerCase().includes(t) || f.away.name.toLowerCase().includes(t),
     );
   }
-  let q = supabase.from('fixtures').select(FIXTURE_SELECT).order('kickoff', { ascending: true }).limit(50);
+  let q = supabase.from('fixtures').select(FIXTURE_SELECT).order('kickoff', { ascending: false }).limit(80);
+  if (leagueApiId != null) q = q.eq('league.api_id', leagueApiId);
   const { data, error } = await q;
   if (error) throw error;
   let rows = (data ?? []) as unknown as FixtureRow[];

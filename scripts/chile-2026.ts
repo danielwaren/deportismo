@@ -54,15 +54,50 @@ const byElo = [...teams].sort((x, y) => E(y) - E(x));
 const eloRank: Record<string, number> = {};
 byElo.forEach((t, i) => (eloRank[t] = i + 1));
 
-console.log(`\nLiga de Primera 2026 — ${M.length} partidos, ${teams.length} equipos\n`);
-console.log('TABLA REAL (puntos)            | Pos Elo |  Elo  | Δ (tabla vs Elo)');
-console.log('───────────────────────────────────────────────────────────────────');
+// --- Tabla de comparación (a stderr, legible) ---
+console.error(`\nLiga de Primera 2026 — ${M.length} partidos, ${teams.length} equipos\n`);
+console.error('TABLA REAL (puntos)            | Pos Elo |  Elo  | Δ');
+console.error('──────────────────────────────────────────────────────');
 byPts.forEach((t, i) => {
   const posTbl = i + 1, posElo = eloRank[t]!;
-  const d = posTbl - posElo; // + = Elo lo ve mejor que la tabla; - = peor
-  const flag = d >= 2 ? '  ⬆ Elo lo sube' : d <= -2 ? '  ⬇ Elo lo baja' : '';
-  console.log(
+  const d = posTbl - posElo;
+  console.error(
     `${String(posTbl).padStart(2)}. ${t.padEnd(24)} ${String(tbl[t]!.pts).padStart(3)}pts | ` +
-    `   ${String(posElo).padStart(2)}   | ${String(Math.round(E(t))).padStart(4)} | ${d > 0 ? '+' : ''}${d}${flag}`,
+    `   ${String(posElo).padStart(2)}   | ${String(Math.round(E(t))).padStart(4)} | ${d > 0 ? '+' : ''}${d}`,
   );
 });
+
+// --- SQL de integración (a stdout) ---
+const apiOf: Record<string, number> = {};
+teams.forEach((t, i) => (apiOf[t] = -201 - i));
+const esc = (s: string) => s.replace(/'/g, "''");
+
+console.log(
+  'insert into public.teams (api_id,sport,name,short_name,country) values ' +
+  teams.map((t) => `(${apiOf[t]},'football','${esc(t)}','${esc(t.slice(0, 3).toUpperCase())}','Chile')`).join(',') +
+  ' on conflict (api_id,sport) do nothing;',
+);
+console.log(
+  'insert into public.team_elo_history (team_id,elo,as_of) select t.id, v.elo, now() from public.teams t ' +
+  'join (values ' + teams.map((t) => `(${apiOf[t]},${Math.round(E(t))})`).join(',') +
+  ') v(api,elo) on v.api=t.api_id;',
+);
+const fxVals = M.map(([h, hg, ag, a], i) => {
+  const fecha = Math.floor(i / 8) + 1;
+  const dt = new Date(Date.UTC(2026, 1, 1 + (fecha - 1) * 7, 20)).toISOString();
+  return `(${-3000 - i},${apiOf[h]},${apiOf[a]},${hg},${ag},'${dt}','Fecha ${fecha}')`;
+});
+console.log(
+  'insert into public.fixtures (api_id,sport,league_id,home_team_id,away_team_id,kickoff,status,round,importance_weight,home_goals,away_goals,elo_applied) ' +
+  'select v.fapi,\'football\',lg.id,h.id,a.id,v.dt::timestamptz,\'finished\'::fixture_status,v.round,1.0,v.hg,v.ag,true ' +
+  'from (values ' + M.map(([h, hg, ag, a], i) => {
+    const fecha = Math.floor(i / 8) + 1;
+    const dt = new Date(Date.UTC(2026, 1, 1 + (fecha - 1) * 7, 20)).toISOString();
+    return `(${-3000 - i},${apiOf[h]},${apiOf[a]},${hg},${ag},'${dt}','Fecha ${fecha}')`;
+  }).join(',') +
+  ') v(fapi,hapi,aapi,hg,ag,dt,round) ' +
+  'join public.leagues lg on lg.api_id=265 and lg.season=2026 ' +
+  'join public.teams h on h.api_id=v.hapi and h.sport=\'football\' ' +
+  'join public.teams a on a.api_id=v.aapi and a.sport=\'football\';',
+);
+void fxVals;

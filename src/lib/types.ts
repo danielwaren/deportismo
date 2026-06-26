@@ -16,7 +16,7 @@ export interface FixtureRow {
   away_goals: number | null;
   home: TeamRow;
   away: TeamRow;
-  league?: { name: string } | null;
+  league?: { api_id?: number; name: string } | null;
 }
 
 export interface ModelOutputRow {
