@@ -1,6 +1,6 @@
 import type { CalibrationPoint } from '@sti/model';
 import { supabase } from './supabase';
-import { analyzeMatch, type MatchAnalysis, type TeamElo } from './predict';
+import { analyzeMatch, type MatchAnalysis, type PredictInput, type TeamElo } from './predict';
 import { DEMO_CONFIG, DEMO_FIXTURES, demoCalibration, demoDetail } from './demo';
 import type {
   EnsembleConfigRow,
@@ -171,19 +171,19 @@ function pickComponents(rows: Array<{ team_id: number; elo: number; component: s
  * Análisis COMPLETO del partido calculado en vivo con @sti/model desde el Elo
  * multi-componente persistido + cuotas. Alimenta el dashboard del partido.
  */
-export async function getMatchAnalysis(id: number): Promise<{ analysis: MatchAnalysis; homeName: string; awayName: string } | null> {
+export async function getMatchAnalysis(id: number): Promise<{ analysis: MatchAnalysis; input: PredictInput; homeName: string; awayName: string } | null> {
   if (!isConfigured) {
     const d = demoDetail(id);
     if (!d) return null;
     const eh = d.eloHome ?? 1500;
     const ea = d.eloAway ?? 1500;
-    const analysis = analyzeMatch({
+    const input: PredictInput = {
       homeName: d.fixture.home.name, awayName: d.fixture.away.name,
       home: { general: eh, offensive: eh, defensive: eh },
       away: { general: ea, offensive: ea, defensive: ea },
       leagueAvgElo: 1500, leagueAvgGoals: 1.35, homeAdvElo: 65, seed: id,
-    });
-    return { analysis, homeName: d.fixture.home.name, awayName: d.fixture.away.name };
+    };
+    return { analysis: analyzeMatch(input), input, homeName: d.fixture.home.name, awayName: d.fixture.away.name };
   }
 
   const { data: fixture, error } = await supabase
@@ -230,13 +230,13 @@ export async function getMatchAnalysis(id: number): Promise<{ analysis: MatchAna
     if (h && d && a) odds = { home: h, draw: d, away: a };
   }
 
-  const analysis = analyzeMatch({
+  const input: PredictInput = {
     homeName: fx.home.name, awayName: fx.away.name,
     home, away, leagueAvgElo,
     leagueAvgGoals: LEAGUE_AVG_GOALS[leagueApiId] ?? 1.35,
     homeAdvElo, odds, seed: id,
-  });
-  return { analysis, homeName: fx.home.name, awayName: fx.away.name };
+  };
+  return { analysis: analyzeMatch(input), input, homeName: fx.home.name, awayName: fx.away.name };
 }
 
 /** Ranking Elo de los equipos de una liga (api_id: 1 = Mundial, 265 = Chile). */

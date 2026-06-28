@@ -5,6 +5,7 @@ import type { MatchDetailData } from '../lib/types';
 import type { MatchAnalysis } from '../lib/predict';
 import Prob1x2 from './Prob1x2';
 import MatchDashboard from './MatchDashboard';
+import SimulationLab from './SimulationLab';
 
 const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
 
@@ -77,7 +78,10 @@ export default function MatchDetail({ id }: { id: number }) {
 
       {/* Dashboard del partido (análisis en vivo con @sti/model) */}
       {analysis && (
-        <MatchDashboard analysis={analysis.analysis} homeName={analysis.homeName} awayName={analysis.awayName} />
+        <>
+          <MatchDashboard analysis={analysis.analysis} homeName={analysis.homeName} awayName={analysis.awayName} />
+          <SimulationLab input={analysis.input} homeName={analysis.homeName} awayName={analysis.awayName} />
+        </>
       )}
 
       {/* Salida del modelo (persistida) */}

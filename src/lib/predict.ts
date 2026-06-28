@@ -49,6 +49,12 @@ export interface PredictInput {
   weights?: { poisson: number; elo: number };
   seed?: number; // semilla MC (reproducibilidad); típ. el id del fixture
   runs?: number;
+  // Variables contextuales (what-if del Laboratorio). Opcionales: 0/ausente = neutro.
+  formHome?: number; // [-1, 1]
+  formAway?: number;
+  restAdvantage?: number; // [-1, 1] a favor del local
+  injuriesHome?: number; // [0, 1] severidad
+  injuriesAway?: number;
 }
 
 export interface ValueRow {
@@ -95,6 +101,11 @@ export function analyzeMatch(i: PredictInput): MatchAnalysis {
     awayAttack,
     homeDefense,
     homeAdvantage: homeAdvMultiplier(i.homeAdvElo),
+    formHome: i.formHome,
+    formAway: i.formAway,
+    restAdvantage: i.restAdvantage,
+    injuriesHome: i.injuriesHome,
+    injuriesAway: i.injuriesAway,
   });
 
   // 3) Dixon-Coles + 4) Elo 1X2 + 5) mezcla.
