@@ -4,7 +4,10 @@
 // resultados se persisten; el frontend solo lee.
 
 export * from './types';
+export * from './explain';
+export * from './model';
 export * from './elo';
+export * from './lambdas';
 export * from './poisson';
 export * from './ensemble';
 export * from './context';

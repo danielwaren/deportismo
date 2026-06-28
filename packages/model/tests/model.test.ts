@@ -20,6 +20,13 @@ import {
   brierScore,
   logLoss,
   reliabilityBins,
+  defaultComponents,
+  updateEloComponents,
+  eloToAttackStrength,
+  eloToDefenseStrength,
+  computeLambdas,
+  rankFactors,
+  multFactor,
 } from '../src/index';
 
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
@@ -170,6 +177,87 @@ describe('Calibración', () => {
     expect(bins).toHaveLength(10);
     expect(bins.reduce((s, b) => s + b.count, 0)).toBe(3);
     expect(bins[9]!.observed).toBe(1); // el de prob 0.95 acertó
+  });
+});
+
+describe('Elo multi-componente (F1)', () => {
+  it('defaultComponents arranca todos al base', () => {
+    const c = defaultComponents(1500);
+    expect(c.general).toBe(1500);
+    expect(c.offensive).toBe(1500);
+    expect(c.defensive).toBe(1500);
+  });
+
+  it('ganar 3-0 sube general y ofensivo; baja nada defensivo malo', () => {
+    const prev = defaultComponents(1500);
+    const opp = { general: 1500, offensive: 1500, defensive: 1500 };
+    const { next, explanation } = updateEloComponents(prev, {
+      isHome: true, goalsFor: 3, goalsAgainst: 0, opponent: opp,
+    });
+    expect(next.general).toBeGreaterThan(prev.general); // ganó
+    expect(next.offensive).toBeGreaterThan(prev.offensive); // marcó más de lo esperado
+    expect(next.defensive).toBeGreaterThan(prev.defensive); // no encajó (0 vs esperado>0)
+    expect(next.home).toBeGreaterThan(prev.home); // jugó de local
+    expect(next.away).toBe(prev.away); // no tocó el de visitante
+    expect(explanation.factors.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('encajar más de lo esperado baja el Elo defensivo', () => {
+    const prev = defaultComponents(1500);
+    const opp = { general: 1500, offensive: 1500, defensive: 1500 };
+    const { next } = updateEloComponents(prev, {
+      isHome: false, goalsFor: 0, goalsAgainst: 4, opponent: opp,
+    });
+    expect(next.defensive).toBeLessThan(prev.defensive);
+    expect(next.away).toBeLessThan(prev.away); // perdió de visitante
+    expect(next.home).toBe(prev.home);
+  });
+
+  it('mapeo Elo->fuerza: ataque alto >1, defensa fuerte <1', () => {
+    expect(eloToAttackStrength(1500, 1500)).toBeCloseTo(1, 6);
+    expect(eloToAttackStrength(1600, 1500)).toBeGreaterThan(1);
+    expect(eloToDefenseStrength(1600, 1500)).toBeLessThan(1); // mejor defensa => rival marca menos
+  });
+});
+
+describe('Lambdas principistas (F1)', () => {
+  it('equipos medios sin contexto -> lambda ~ media de liga', () => {
+    const r = computeLambdas({
+      leagueAvgGoals: 1.35, homeAttack: 1, awayDefense: 1, awayAttack: 1, homeDefense: 1,
+    });
+    expect(r.lambdaHome).toBeCloseTo(1.35, 6);
+    expect(r.lambdaAway).toBeCloseTo(1.35, 6);
+  });
+
+  it('localía y mejor ataque suben la lambda local y se explican', () => {
+    const r = computeLambdas({
+      leagueAvgGoals: 1.35, homeAttack: 1.2, awayDefense: 1, awayAttack: 1, homeDefense: 1,
+      homeAdvantage: 1.1, formHome: 0.5, injuriesAway: 0.4,
+    });
+    expect(r.lambdaHome).toBeGreaterThan(1.35);
+    // hay factores explicables y rankFactors los ordena por relevancia
+    const ranked = rankFactors(r.explanation);
+    expect(ranked.length).toBeGreaterThan(3);
+    expect(Math.abs(ranked[0]!.impact)).toBeGreaterThanOrEqual(Math.abs(ranked[ranked.length - 1]!.impact));
+    expect(r.explanation.summary).toContain('λ');
+  });
+
+  it('lesiones del local reducen su lambda', () => {
+    const sano = computeLambdas({ leagueAvgGoals: 1.35, homeAttack: 1, awayDefense: 1, awayAttack: 1, homeDefense: 1 });
+    const tocado = computeLambdas({ leagueAvgGoals: 1.35, homeAttack: 1, awayDefense: 1, awayAttack: 1, homeDefense: 1, injuriesHome: 0.8 });
+    expect(tocado.lambdaHome).toBeLessThan(sano.lambdaHome);
+  });
+
+  it('combineEnsemble acepta lambdas principistas como override', () => {
+    const r = combineEnsemble({ eloHome: 1500, eloAway: 1500, lambdas: { lambdaHome: 2.0, lambdaAway: 0.8 } });
+    // la supremacía de goles se refleja en el 1X2
+    expect(r.lambdaHome).toBeGreaterThan(r.lambdaAway);
+    expect(r.final.home).toBeGreaterThan(r.final.away);
+  });
+
+  it('multFactor formatea el multiplicador como porcentaje', () => {
+    expect(multFactor('x', 'X', 1.08).detail).toBe('+8%');
+    expect(multFactor('x', 'X', 0.95).detail).toBe('-5%');
   });
 });
 

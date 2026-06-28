@@ -71,6 +71,12 @@ export interface CombineInput {
   gamma?: number; // elasticidad Elo->goles
   /** Modificador contextual en [-1, 1] (de contextModifier). 0 = sin contexto. */
   context?: number;
+  /**
+   * λ ya calculadas por la ruta PRINCIPISTA (computeLambdas: ataque×defensa×…).
+   * Si se proporcionan, sustituyen a la derivación "solo Elo" (eloToLambdas), que
+   * queda como fallback de cold-start. Es OPCIONAL para no romper llamadas previas.
+   */
+  lambdas?: { lambdaHome: number; lambdaAway: number };
 }
 
 export interface EnsembleResult {
@@ -103,11 +109,15 @@ export function combineEnsemble(input: CombineInput): EnsembleResult {
   const homeAdvantage = input.homeAdvantage ?? 0;
   const ctx = Math.max(-1, Math.min(1, input.context ?? 0));
 
-  let { lambdaHome, lambdaAway } = eloToLambdas(input.eloHome, input.eloAway, {
-    mu: input.mu,
-    gamma: input.gamma,
-    homeAdvantage,
-  });
+  // Ruta principista (ataque×defensa×contexto) si se pasan lambdas; si no,
+  // fallback de cold-start derivando las lambdas del Elo global.
+  let { lambdaHome, lambdaAway } =
+    input.lambdas ??
+    eloToLambdas(input.eloHome, input.eloAway, {
+      mu: input.mu,
+      gamma: input.gamma,
+      homeAdvantage,
+    });
 
   const shift = Math.exp(weights.context * ctx);
   lambdaHome *= shift;
