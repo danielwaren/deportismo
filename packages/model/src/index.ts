@@ -8,6 +8,7 @@ export * from './explain';
 export * from './model';
 export * from './elo';
 export * from './lambdas';
+export * from './xg';
 export * from './poisson';
 export * from './ensemble';
 export * from './context';

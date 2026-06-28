@@ -27,6 +27,12 @@ import {
   computeLambdas,
   rankFactors,
   multFactor,
+  xgReliability,
+  xgAttackStrength,
+  xgDefenseStrength,
+  xgAdjustedStrengths,
+  weightedFormScore,
+  dynamicContextScore,
 } from '../src/index';
 
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
@@ -258,6 +264,79 @@ describe('Lambdas principistas (F1)', () => {
   it('multFactor formatea el multiplicador como porcentaje', () => {
     expect(multFactor('x', 'X', 1.08).detail).toBe('+8%');
     expect(multFactor('x', 'X', 0.95).detail).toBe('-5%');
+  });
+});
+
+describe('xG (#3)', () => {
+  it('fiabilidad crece con partidos y satura', () => {
+    expect(xgReliability(0)).toBe(0);
+    expect(xgReliability(3)).toBeCloseTo(0.5, 6);
+    expect(xgReliability(12)).toBe(1);
+  });
+
+  it('fuerzas xG: generar más xG que la media -> ataque>1; conceder menos -> defensa<1', () => {
+    expect(xgAttackStrength(1.35, 1.35)).toBeCloseTo(1, 6);
+    expect(xgAttackStrength(2.0, 1.35)).toBeGreaterThan(1);
+    expect(xgDefenseStrength(0.8, 1.35)).toBeLessThan(1);
+  });
+
+  it('sin datos xG devuelve la fuerza base intacta', () => {
+    const r = xgAdjustedStrengths(1.2, 0.9, 1.35, undefined);
+    expect(r.attack).toBe(1.2);
+    expect(r.defense).toBe(0.9);
+    expect(r.explanation.factors).toHaveLength(0);
+  });
+
+  it('con xG mezcla hacia la señal xG y explica', () => {
+    const base = 1.0;
+    const r = xgAdjustedStrengths(base, base, 1.35, {
+      matches: 6, xgForPerGame: 2.0, xgAgainstPerGame: 0.8,
+    });
+    expect(r.attack).toBeGreaterThan(base); // generó mucho xG
+    expect(r.defense).toBeLessThan(base); // concedió poco xG
+    expect(r.explanation.factors.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('Forma inteligente (#4)', () => {
+  it('pondera por jornada explícita: lo reciente pesa más', () => {
+    const recienteW = weightedFormScore([
+      { result: 'W', opponentElo: 1500, teamElo: 1500, ageInMatches: 0 },
+      { result: 'L', opponentElo: 1500, teamElo: 1500, ageInMatches: 4 },
+    ]);
+    const recienteL = weightedFormScore([
+      { result: 'L', opponentElo: 1500, teamElo: 1500, ageInMatches: 0 },
+      { result: 'W', opponentElo: 1500, teamElo: 1500, ageInMatches: 4 },
+    ]);
+    expect(recienteW).toBeGreaterThan(recienteL); // misma W y L, pero la reciente manda
+  });
+
+  it('ganar a rival fuerte puntúa más que a uno débil', () => {
+    const fuerte = weightedFormScore([{ result: 'W', opponentElo: 1750, teamElo: 1500, ageInMatches: 0 }]);
+    const debil = weightedFormScore([{ result: 'W', opponentElo: 1300, teamElo: 1500, ageInMatches: 0 }]);
+    expect(fuerte).toBeGreaterThan(debil);
+  });
+});
+
+describe('Context Score dinámico (#5)', () => {
+  it('sin datos -> 0 y sin factores con impacto', () => {
+    const r = dynamicContextScore({});
+    expect(r.score).toBeCloseTo(0, 6);
+  });
+
+  it('lesiones del rival y altitud favorecen al local; viaje del local resta', () => {
+    const r = dynamicContextScore({ injuriesAway: 0.8, altitudeAdvantage: 0.6 });
+    expect(r.score).toBeGreaterThan(0);
+    const r2 = dynamicContextScore({ travelHome: 0.9 });
+    expect(r2.score).toBeLessThan(0);
+    expect(r.explanation.factors.length).toBeGreaterThan(0);
+    expect(r.explanation.summary).toContain('Contexto');
+  });
+
+  it('la importancia amplifica la señal existente', () => {
+    const base = dynamicContextScore({ injuriesAway: 0.5 });
+    const amplificado = dynamicContextScore({ injuriesAway: 0.5, competitionImportance: 1 });
+    expect(Math.abs(amplificado.score)).toBeGreaterThan(Math.abs(base.score));
   });
 });
 
