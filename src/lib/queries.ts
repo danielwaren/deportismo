@@ -62,6 +62,7 @@ async function latestElo(teamId: number): Promise<number | null> {
     .from('team_elo_history')
     .select('elo')
     .eq('team_id', teamId)
+    .eq('component', 'general')
     .order('as_of', { ascending: false })
     .limit(1)
     .maybeSingle();

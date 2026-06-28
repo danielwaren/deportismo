@@ -183,11 +183,16 @@ create table if not exists public.team_elo_history (
   team_id     bigint not null references public.teams(id) on delete cascade,
   elo         numeric(7,2) not null,
   surface     text,                          -- tennis: 'clay'|'hard'|'grass'
+  -- Elo multi-componente (Fase 1): 'general' (resultado, el que ve el ranking),
+  -- 'home'/'away' (rendimiento por sede) y 'offensive'/'defensive' (goles), que
+  -- alimentan las lambdas principistas. Las filas previas son 'general'.
+  component   text not null default 'general',
   as_of       timestamptz not null default now(),
   fixture_id  bigint references public.fixtures(id) on delete set null,
   created_at  timestamptz not null default now()
 );
 create index if not exists idx_elo_team on public.team_elo_history(team_id, as_of desc);
+create index if not exists idx_elo_team_component on public.team_elo_history(team_id, component, as_of desc);
 
 -- Watchlist manual: SOLO los fixtures aquí consumen cuota en profundidad
 -- (odds, lesiones, alineaciones, estadísticas). Es la palanca anti-cuota.
@@ -436,7 +441,8 @@ create or replace view public.standings_elo as
     select distinct on (teh.team_id)
       teh.team_id, teh.elo, teh.as_of
     from public.team_elo_history teh
-    order by teh.team_id, teh.as_of desc
+    where teh.component = 'general'   -- el ranking principal solo usa el Elo general
+    order by teh.team_id, teh.as_of desc, teh.id desc
   ),
   teams_by_league as (
     select distinct l.api_id as league_api_id, x.team_id
