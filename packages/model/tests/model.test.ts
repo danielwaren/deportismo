@@ -43,6 +43,13 @@ import {
   kellyFraction,
   analyzeValue,
   bookMargin,
+  analyzeMovement,
+  closingLineValue,
+  confidenceIndex,
+  modelAgreement,
+  composeExplanation,
+  buildNarrative,
+  predictionSummary,
 } from '../src/index';
 
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
@@ -445,6 +452,71 @@ describe('Valor / EV / Kelly (#9)', () => {
   it('bookMargin detecta el overround', () => {
     expect(bookMargin([2.0, 2.0])).toBeCloseTo(0, 6); // mercado justo
     expect(bookMargin([1.9, 1.9])).toBeGreaterThan(0); // con margen
+  });
+});
+
+describe('Movimiento de mercado (#10)', () => {
+  it('detecta acortamiento y steam', () => {
+    const r = analyzeMovement([
+      { t: 1, odds: 2.5 }, { t: 2, odds: 2.4 }, { t: 3, odds: 2.1 },
+    ]);
+    expect(r.direction).toBe('shortening');
+    expect(r.pctMove).toBeLessThan(0);
+    expect(r.steam).toBe(true); // 2.4 -> 2.1 es -12.5%
+  });
+
+  it('mercado estable no marca steam', () => {
+    const r = analyzeMovement([{ t: 1, odds: 2.0 }, { t: 2, odds: 2.01 }]);
+    expect(r.direction).toBe('stable');
+    expect(r.steam).toBe(false);
+  });
+
+  it('closingLineValue positivo si se apostó por encima del cierre', () => {
+    expect(closingLineValue(2.1, 1.9)).toBeGreaterThan(0);
+    expect(closingLineValue(1.8, 2.0)).toBeLessThan(0);
+  });
+});
+
+describe('Índice de confianza (#11)', () => {
+  it('modelAgreement: 1 si todos coinciden, baja con discrepancia', () => {
+    const same = modelAgreement([
+      { home: 0.5, draw: 0.3, away: 0.2 }, { home: 0.5, draw: 0.3, away: 0.2 },
+    ]);
+    expect(same).toBeCloseTo(1, 6);
+    const diff = modelAgreement([
+      { home: 0.8, draw: 0.1, away: 0.1 }, { home: 0.2, draw: 0.1, away: 0.7 },
+    ]);
+    expect(diff).toBeLessThan(same);
+  });
+
+  it('confidenceIndex 0-100 con desglose; sube con mejores señales', () => {
+    const bajo = confidenceIndex({ modelAgreement: 0.2, dataCompleteness: 0.2, calibration: 0.2, marketAlignment: 0.2, sampleSize: 1 });
+    const alto = confidenceIndex({ modelAgreement: 0.95, dataCompleteness: 0.9, calibration: 0.9, marketAlignment: 0.8, sampleSize: 12 });
+    expect(alto.score).toBeGreaterThan(bajo.score);
+    expect(alto.score).toBeLessThanOrEqual(100);
+    expect(alto.breakdown).toHaveLength(5);
+  });
+});
+
+describe('Explainable AI (#12)', () => {
+  it('composeExplanation funde y deduplica por key', () => {
+    const a = { factors: [{ key: 'x', label: 'X', value: 1, unit: 'mult' as const, impact: 0.2, detail: '+20%' }] };
+    const b = { factors: [{ key: 'x', label: 'X', value: 1.1, unit: 'mult' as const, impact: 0.3, detail: '+30%' }, { key: 'y', label: 'Y', value: 1, unit: 'mult' as const, impact: 0.1, detail: '+10%' }] };
+    const c = composeExplanation([a, b, undefined]);
+    expect(c.factors).toHaveLength(2); // x deduplicado
+    expect(c.factors.find((f) => f.key === 'x')!.detail).toBe('+30%'); // gana el último
+  });
+
+  it('predictionSummary y buildNarrative arman el "por qué -> conclusión"', () => {
+    expect(predictionSummary({ home: 0.72, draw: 0.18, away: 0.1 })).toContain('72%');
+    const expl = { factors: [
+      { key: 'home_attack', label: 'Ataque local', value: 1.12, unit: 'mult' as const, impact: 0.4, detail: '+12%' },
+      { key: 'rest', label: 'Descanso', value: 1.02, unit: 'mult' as const, impact: 0.05, detail: '+2%' },
+    ] };
+    const n = buildNarrative(expl, { home: 0.72, draw: 0.18, away: 0.1 });
+    expect(n).toContain('Ataque local +12%');
+    expect(n).toContain('→');
+    expect(n).toContain('72%');
   });
 });
 

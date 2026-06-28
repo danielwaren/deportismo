@@ -15,4 +15,6 @@ export * from './ensemble';
 export * from './dynamicweights';
 export * from './context';
 export * from './value';
+export * from './market';
+export * from './confidence';
 export * from './calibration';

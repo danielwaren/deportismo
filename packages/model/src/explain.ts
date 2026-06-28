@@ -89,3 +89,56 @@ export function multFactor(
 export function rankFactors(e: Explanation): FactorContribution[] {
   return [...e.factors].sort((a, b) => Math.abs(b.impact) - Math.abs(a.impact));
 }
+
+// -----------------------------------------------------------------------------
+// COMPOSICIÓN DE LA EXPLICACIÓN COMPLETA (#12 Explainable AI).
+//
+// Cada motor (lambdas, contexto, deltas Elo, xG, confianza) emite su propia
+// Explanation. Aquí se FUNDEN en una sola, deduplicando por `key` (el último
+// gana), para que el panel "por qué" liste todo el razonamiento ordenado por
+// relevancia y cierre con la conclusión ("→ 72% victoria local").
+// -----------------------------------------------------------------------------
+
+/** Funde varias explicaciones en una; ante claves repetidas, prevalece la última. */
+export function composeExplanation(parts: Array<Explanation | undefined>): Explanation {
+  const byKey = new Map<string, FactorContribution>();
+  for (const p of parts) {
+    if (!p) continue;
+    for (const f of p.factors) byKey.set(f.key, f);
+  }
+  return { factors: [...byKey.values()] };
+}
+
+/** Resume un 1X2 en texto: '72% victoria local', '41% empate', etc. */
+export function predictionSummary(
+  oneXtwo: { home: number; draw: number; away: number },
+  labels: { home?: string; away?: string } = {},
+): string {
+  const opts: Array<[string, number]> = [
+    [`${labels.home ? 'victoria ' + labels.home : 'victoria local'}`, oneXtwo.home],
+    ['empate', oneXtwo.draw],
+    [`${labels.away ? 'victoria ' + labels.away : 'victoria visitante'}`, oneXtwo.away],
+  ];
+  opts.sort((a, b) => b[1] - a[1]);
+  return `${Math.round(opts[0]![1] * 100)}% ${opts[0]![0]}`;
+}
+
+/**
+ * Construye la narrativa explicable: los `top` factores más relevantes seguidos
+ * de la conclusión. Ej.: "Ataque local +12%, Forma local +9%, Lesiones visita
+ * +6% → 72% victoria local".
+ */
+export function buildNarrative(
+  e: Explanation,
+  oneXtwo: { home: number; draw: number; away: number },
+  opts: { top?: number; labels?: { home?: string; away?: string } } = {},
+): string {
+  const top = opts.top ?? 4;
+  const drivers = rankFactors(e)
+    .filter((f) => Math.abs(f.impact) > 1e-6)
+    .slice(0, top)
+    .map((f) => `${f.label} ${f.detail}`)
+    .join(', ');
+  const concl = predictionSummary(oneXtwo, opts.labels);
+  return drivers ? `${drivers} → ${concl}` : concl;
+}
