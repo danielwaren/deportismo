@@ -149,12 +149,13 @@ export async function getStandingsOfficial(leagueId: number): Promise<StandingsO
   return (data ?? []) as StandingsOfficialRow[];
 }
 
-/** Ranking Elo de todos los equipos. */
-export async function getStandingsElo(): Promise<StandingsEloRow[]> {
+/** Ranking Elo de los equipos de una liga (api_id: 1 = Mundial, 265 = Chile). */
+export async function getStandingsElo(leagueId: number): Promise<StandingsEloRow[]> {
   if (!isConfigured) return [];
   const { data, error } = await supabase
     .from('standings_elo')
-    .select('position,team_id,team_name,short_name,logo,rating,updated_at')
+    .select('position,league_id,team_id,team_name,short_name,logo,rating,updated_at')
+    .eq('league_id', leagueId)
     .order('position', { ascending: true });
   if (error) throw error;
   return (data ?? []) as StandingsEloRow[];

@@ -75,6 +75,7 @@ export interface StandingsOfficialRow {
 
 export interface StandingsEloRow {
   position: number;
+  league_id: number;
   team_id: number;
   team_name: string;
   short_name?: string | null;

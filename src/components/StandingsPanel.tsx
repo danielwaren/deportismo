@@ -19,7 +19,7 @@ export default function StandingsPanel({ leagueId, title }: Props) {
     setLoading(true);
     setError(null);
 
-    Promise.all([getStandingsOfficial(leagueId), getStandingsElo()])
+    Promise.all([getStandingsOfficial(leagueId), getStandingsElo(leagueId)])
       .then(([off, el]) => {
         if (active) {
           setOfficial(off);
@@ -101,7 +101,7 @@ export default function StandingsPanel({ leagueId, title }: Props) {
                   <td className="py-2 px-2 font-medium">{'position' in row ? row.position : idx + 1}</td>
                   <td className="py-2 px-2 flex items-center gap-2">
                     {row.logo && <img src={row.logo} alt="" className="w-5 h-5 rounded-full" />}
-                    <span>{row.short_name || row.team_name}</span>
+                    <span>{row.team_name}</span>
                   </td>
                   {tab === 'official' && 'points' in row ? (
                     <>
