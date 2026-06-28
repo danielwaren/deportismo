@@ -31,9 +31,13 @@ begin
            from public.fixtures f left join public.leagues l on l.id=f.league_id
            where f.status='finished' and not f.elo_applied
              and f.home_goals is not null and f.away_goals is not null
-           order by f.kickoff loop
-    select elo into eh from public.team_elo_history where team_id=r.home_team_id order by as_of desc limit 1;
-    select elo into ea from public.team_elo_history where team_id=r.away_team_id order by as_of desc limit 1;
+           order by f.kickoff, f.id loop
+    -- clock_timestamp() (NO now()): now() es constante en la transacción, así que
+    -- al procesar muchos partidos de una vez todos los registros quedaban con el
+    -- mismo as_of y el "order by as_of desc limit 1" devolvía una fila arbitraria
+    -- (rompía el encadenamiento del Elo). clock_timestamp avanza en cada insert.
+    select elo into eh from public.team_elo_history where team_id=r.home_team_id order by as_of desc, id desc limit 1;
+    select elo into ea from public.team_elo_history where team_id=r.away_team_id order by as_of desc, id desc limit 1;
     eh:=coalesce(eh,1500); ea:=coalesce(ea,1500);
     -- ventaja de local de la liga (0 en torneos neutros).
     we:=1.0/(1.0+power(10,(ea-(eh+r.ha))/400.0));
@@ -42,8 +46,8 @@ begin
     mult:=case when gd<=1 then 1 when gd=2 then 1.5 else (11+gd)/8.0 end;
     k:=30*mult;
     insert into public.team_elo_history(team_id,elo,as_of,fixture_id) values
-      (r.home_team_id, round((eh+k*(w-we))::numeric,2), now(), r.id),
-      (r.away_team_id, round((ea+k*(we-w))::numeric,2), now(), r.id);
+      (r.home_team_id, round((eh+k*(w-we))::numeric,2), clock_timestamp(), r.id),
+      (r.away_team_id, round((ea+k*(we-w))::numeric,2), clock_timestamp(), r.id);
     update public.fixtures set elo_applied=true where id=r.id;
     n:=n+1;
   end loop;
