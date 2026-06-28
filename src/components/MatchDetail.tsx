@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { buildScoreMatrix } from '@sti/model';
-import { getMatchDetail } from '../lib/queries';
+import { getMatchDetail, getMatchAnalysis } from '../lib/queries';
 import type { MatchDetailData } from '../lib/types';
+import type { MatchAnalysis } from '../lib/predict';
 import Prob1x2 from './Prob1x2';
+import MatchDashboard from './MatchDashboard';
 
 const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
 
@@ -17,16 +19,18 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 export default function MatchDetail({ id }: { id: number }) {
   const [data, setData] = useState<MatchDetailData | null>(null);
+  const [analysis, setAnalysis] = useState<{ analysis: MatchAnalysis; homeName: string; awayName: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
     let active = true;
-    getMatchDetail(id)
-      .then((d) => {
+    Promise.all([getMatchDetail(id), getMatchAnalysis(id).catch(() => null)])
+      .then(([d, a]) => {
         if (!active) return;
         if (!d) setNotFound(true);
         else setData(d);
+        if (a) setAnalysis(a);
       })
       .finally(() => active && setLoading(false));
     return () => {
@@ -71,9 +75,14 @@ export default function MatchDetail({ id }: { id: number }) {
         </div>
       </div>
 
-      {/* Salida del modelo */}
+      {/* Dashboard del partido (análisis en vivo con @sti/model) */}
+      {analysis && (
+        <MatchDashboard analysis={analysis.analysis} homeName={analysis.homeName} awayName={analysis.awayName} />
+      )}
+
+      {/* Salida del modelo (persistida) */}
       <div className="panel p-4">
-        <div className="label mb-3">Modelo · 1X2</div>
+        <div className="label mb-3">Modelo persistido · 1X2</div>
         {model ? (
           <>
             <Prob1x2

@@ -1,5 +1,6 @@
 import type { CalibrationPoint } from '@sti/model';
 import { supabase } from './supabase';
+import { analyzeMatch, type MatchAnalysis, type TeamElo } from './predict';
 import { DEMO_CONFIG, DEMO_FIXTURES, demoCalibration, demoDetail } from './demo';
 import type {
   EnsembleConfigRow,
@@ -151,6 +152,91 @@ export async function getStandingsOfficial(leagueId: number): Promise<StandingsO
     .order('position', { ascending: true });
   if (error) throw error;
   return (data ?? []) as StandingsOfficialRow[];
+}
+
+// Goles por equipo y partido típicos por liga (api_id). Fallback 1.35.
+const LEAGUE_AVG_GOALS: Record<number, number> = { 1: 1.45, 265: 1.2 };
+
+/** Últimos Elo por componente de un equipo: { general, offensive, defensive }. */
+function pickComponents(rows: Array<{ team_id: number; elo: number; component: string }>, teamId: number, fallback: number): TeamElo {
+  const latest = (c: string) => {
+    const r = rows.find((x) => x.team_id === teamId && x.component === c);
+    return r ? Number(r.elo) : fallback;
+  };
+  const general = latest('general');
+  return { general, offensive: latest('offensive') || general, defensive: latest('defensive') || general };
+}
+
+/**
+ * Análisis COMPLETO del partido calculado en vivo con @sti/model desde el Elo
+ * multi-componente persistido + cuotas. Alimenta el dashboard del partido.
+ */
+export async function getMatchAnalysis(id: number): Promise<{ analysis: MatchAnalysis; homeName: string; awayName: string } | null> {
+  if (!isConfigured) {
+    const d = demoDetail(id);
+    if (!d) return null;
+    const eh = d.eloHome ?? 1500;
+    const ea = d.eloAway ?? 1500;
+    const analysis = analyzeMatch({
+      homeName: d.fixture.home.name, awayName: d.fixture.away.name,
+      home: { general: eh, offensive: eh, defensive: eh },
+      away: { general: ea, offensive: ea, defensive: ea },
+      leagueAvgElo: 1500, leagueAvgGoals: 1.35, homeAdvElo: 65, seed: id,
+    });
+    return { analysis, homeName: d.fixture.home.name, awayName: d.fixture.away.name };
+  }
+
+  const { data: fixture, error } = await supabase
+    .from('fixtures')
+    .select(
+      'id,kickoff,home_team_id,away_team_id,' +
+        'home:home_team_id(id,name,short_name),away:away_team_id(id,name,short_name),' +
+        'league:league_id!inner(api_id,name,elo_home_adv)',
+    )
+    .eq('id', id)
+    .single();
+  if (error || !fixture) return null;
+  const fx = fixture as any;
+  const homeId = fx.home.id as number;
+  const awayId = fx.away.id as number;
+  const leagueApiId = fx.league?.api_id as number;
+  const homeAdvElo = Number(fx.league?.elo_home_adv ?? 0);
+
+  const [{ data: eloRows }, { data: standings }, { data: oddsRows }] = await Promise.all([
+    supabase
+      .from('team_elo_history')
+      .select('team_id,elo,component,as_of')
+      .in('team_id', [homeId, awayId])
+      .in('component', ['general', 'offensive', 'defensive'])
+      .order('as_of', { ascending: false }),
+    supabase.from('standings_elo').select('rating').eq('league_id', leagueApiId),
+    supabase.from('odds').select('selection,odds').eq('fixture_id', id).eq('market', '1x2'),
+  ]);
+
+  const rows = (eloRows ?? []) as Array<{ team_id: number; elo: number; component: string }>;
+  const home = pickComponents(rows, homeId, 1500);
+  const away = pickComponents(rows, awayId, 1500);
+
+  const ratings = (standings ?? []).map((s: any) => Number(s.rating)).filter((n) => Number.isFinite(n));
+  const leagueAvgElo = ratings.length ? ratings.reduce((a, b) => a + b, 0) / ratings.length : 1500;
+
+  let odds: { home: number; draw: number; away: number } | undefined;
+  if (oddsRows && oddsRows.length) {
+    const find = (sel: string) => {
+      const r = (oddsRows as any[]).find((o) => o.selection === sel);
+      return r ? Number(r.odds) : undefined;
+    };
+    const h = find('home'), d = find('draw'), a = find('away');
+    if (h && d && a) odds = { home: h, draw: d, away: a };
+  }
+
+  const analysis = analyzeMatch({
+    homeName: fx.home.name, awayName: fx.away.name,
+    home, away, leagueAvgElo,
+    leagueAvgGoals: LEAGUE_AVG_GOALS[leagueApiId] ?? 1.35,
+    homeAdvElo, odds, seed: id,
+  });
+  return { analysis, homeName: fx.home.name, awayName: fx.away.name };
 }
 
 /** Ranking Elo de los equipos de una liga (api_id: 1 = Mundial, 265 = Chile). */
