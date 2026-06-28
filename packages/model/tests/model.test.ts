@@ -33,6 +33,16 @@ import {
   xgAdjustedStrengths,
   weightedFormScore,
   dynamicContextScore,
+  simulateMatch,
+  samplePoisson,
+  mulberry32,
+  dynamicWeights,
+  calibrationError,
+  tradingMetrics,
+  expectedValue,
+  kellyFraction,
+  analyzeValue,
+  bookMargin,
 } from '../src/index';
 
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
@@ -337,6 +347,104 @@ describe('Context Score dinámico (#5)', () => {
     const base = dynamicContextScore({ injuriesAway: 0.5 });
     const amplificado = dynamicContextScore({ injuriesAway: 0.5, competitionImportance: 1 });
     expect(Math.abs(amplificado.score)).toBeGreaterThan(Math.abs(base.score));
+  });
+});
+
+describe('Monte Carlo (#6)', () => {
+  it('mulberry32 es determinista', () => {
+    const a = mulberry32(42);
+    const b = mulberry32(42);
+    expect(a()).toBe(b());
+  });
+
+  it('samplePoisson ~ media lambda en muchas muestras', () => {
+    const rng = mulberry32(7);
+    let s = 0;
+    const N = 20000;
+    for (let i = 0; i < N; i++) s += samplePoisson(1.6, rng);
+    expect(s / N).toBeGreaterThan(1.4);
+    expect(s / N).toBeLessThan(1.8);
+  });
+
+  it('MC aproxima el Dixon-Coles analítico para las mismas lambdas', () => {
+    const dc = buildScoreMatrix(1.7, 1.1);
+    const mc = simulateMatch(1.7, 1.1, { runs: 40000, seed: 123 });
+    expect(mc.oneXtwo.home + mc.oneXtwo.draw + mc.oneXtwo.away).toBeCloseTo(1, 6);
+    // dentro de ~3 puntos del analítico (Poisson independiente vs DC).
+    expect(Math.abs(mc.oneXtwo.home - dc.oneXtwo.home)).toBeLessThan(0.03);
+    expect(mc.over['2.5']!).toBeGreaterThan(0);
+    expect(mc.over['1.5']!).toBeGreaterThan(mc.over['2.5']!); // monotonía
+    expect(mc.avgTotalGoals).toBeGreaterThan(2.5);
+    expect(mc.handicap.find((h) => h.line === -1)!.homeCover).toBeLessThan(
+      mc.handicap.find((h) => h.line === 1)!.homeCover,
+    );
+  });
+});
+
+describe('Ensemble dinámico (#7)', () => {
+  it('con pocas muestras se queda cerca del prior', () => {
+    const w = dynamicWeights(
+      { poisson: { brier: 0.2, samples: 1 }, elo: { brier: 0.25, samples: 1 } },
+      { prior: { poisson: 0.7, elo: 0.3 } },
+    );
+    expect(w.poisson!).toBeGreaterThan(0.6);
+  });
+
+  it('un modelo con peor Brier pierde peso al haber datos', () => {
+    const w = dynamicWeights({
+      bueno: { brier: 0.15, samples: 100 },
+      malo: { brier: 0.30, samples: 100 },
+    });
+    expect(w.bueno!).toBeGreaterThan(w.malo!);
+    expect(w.bueno! + w.malo!).toBeCloseTo(1, 6);
+  });
+});
+
+describe('Calibración trading (#8)', () => {
+  it('calibrationError: 0 si predicho == observado', () => {
+    const pts = [
+      { prob: 0.9, outcome: 1 as const }, { prob: 0.9, outcome: 1 as const },
+      { prob: 0.1, outcome: 0 as const }, { prob: 0.1, outcome: 0 as const },
+    ];
+    expect(calibrationError(pts)).toBeLessThan(0.15);
+  });
+
+  it('tradingMetrics calcula ROI, hitRate y CLV', () => {
+    const m = tradingMetrics([
+      { stake: 1, odds: 2.0, won: true, closingOdds: 1.8 },
+      { stake: 1, odds: 2.0, won: false, closingOdds: 2.1 },
+    ]);
+    expect(m.bets).toBe(2);
+    expect(m.staked).toBe(2);
+    expect(m.profit).toBeCloseTo(0, 6); // +1 y -1
+    expect(m.roi).toBeCloseTo(0, 6);
+    expect(m.hitRate).toBeCloseTo(0.5, 6);
+    expect(m.clv).toBeGreaterThan(0); // apostó 2.0 con cierres 1.8/2.1 => CLV+ medio
+  });
+});
+
+describe('Valor / EV / Kelly (#9)', () => {
+  it('expectedValue positivo cuando el modelo supera la cuota', () => {
+    expect(expectedValue(0.6, 2.0)).toBeCloseTo(0.2, 6); // 0.6*2-1
+    expect(expectedValue(0.4, 2.0)).toBeLessThan(0);
+  });
+
+  it('kellyFraction: 0 sin valor, positiva con valor', () => {
+    expect(kellyFraction(0.4, 2.0)).toBe(0); // sin ventaja
+    expect(kellyFraction(0.6, 2.0)).toBeGreaterThan(0);
+  });
+
+  it('analyzeValue sugiere stake con Kelly fraccionado', () => {
+    const a = analyzeValue(0.6, 2.0, 0.5, { bankroll: 100, kellyFraction: 0.25 });
+    expect(a.isValue).toBe(true);
+    expect(a.ev).toBeCloseTo(0.2, 6);
+    expect(a.stake).toBeGreaterThan(0);
+    expect(a.stake).toBeLessThan(100 * a.kelly); // fraccionado < Kelly completo
+  });
+
+  it('bookMargin detecta el overround', () => {
+    expect(bookMargin([2.0, 2.0])).toBeCloseTo(0, 6); // mercado justo
+    expect(bookMargin([1.9, 1.9])).toBeGreaterThan(0); // con margen
   });
 });
 

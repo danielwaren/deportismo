@@ -54,3 +54,74 @@ export function reliabilityBins(points: CalibrationPoint[], nBins = 10): Reliabi
   }
   return bins;
 }
+
+/**
+ * Expected Calibration Error (#8): media ponderada |confianza − acierto| sobre
+ * los bins. 0 = perfectamente calibrado. Resume el reliability diagram en un nº.
+ */
+export function calibrationError(points: CalibrationPoint[], nBins = 10): number {
+  if (points.length === 0) return 0;
+  const bins = reliabilityBins(points, nBins);
+  let ece = 0;
+  for (const b of bins) {
+    if (b.count === 0) continue;
+    ece += (b.count / points.length) * Math.abs(b.meanPredicted - b.observed);
+  }
+  return ece;
+}
+
+// -----------------------------------------------------------------------------
+// MÉTRICAS DE TRADING (#8): ROI, Yield, CLV. Operan sobre apuestas liquidadas.
+// -----------------------------------------------------------------------------
+
+export interface SettledBet {
+  stake: number; // importe apostado
+  odds: number; // cuota decimal a la que se apostó
+  won: boolean; // ¿ganó?
+  closingOdds?: number; // cuota de cierre (para CLV)
+}
+
+export interface TradingMetrics {
+  bets: number;
+  staked: number;
+  profit: number; // beneficio neto
+  roi: number; // profit / staked
+  yield: number; // == roi (alias habitual en apuestas), en %
+  hitRate: number; // fracción de aciertos
+  clv: number; // closing line value medio (positivo = batir el cierre)
+}
+
+/**
+ * Calcula ROI/Yield/HitRate/CLV de un conjunto de apuestas liquidadas.
+ *   profit_i = won ? stake·(odds−1) : −stake
+ *   CLV_i    = odds/closingOdds − 1  (cuánto mejor que el cierre se apostó)
+ */
+export function tradingMetrics(bets: SettledBet[]): TradingMetrics {
+  if (bets.length === 0) {
+    return { bets: 0, staked: 0, profit: 0, roi: 0, yield: 0, hitRate: 0, clv: 0 };
+  }
+  let staked = 0;
+  let profit = 0;
+  let wins = 0;
+  let clvSum = 0;
+  let clvN = 0;
+  for (const b of bets) {
+    staked += b.stake;
+    profit += b.won ? b.stake * (b.odds - 1) : -b.stake;
+    if (b.won) wins++;
+    if (b.closingOdds && b.closingOdds > 1) {
+      clvSum += b.odds / b.closingOdds - 1;
+      clvN++;
+    }
+  }
+  const roi = staked > 0 ? profit / staked : 0;
+  return {
+    bets: bets.length,
+    staked,
+    profit,
+    roi,
+    yield: roi * 100,
+    hitRate: wins / bets.length,
+    clv: clvN > 0 ? clvSum / clvN : 0,
+  };
+}
