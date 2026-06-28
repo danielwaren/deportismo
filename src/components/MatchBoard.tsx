@@ -14,17 +14,32 @@ export default function MatchBoard() {
   const [search, setSearch] = useState('');
   const [league, setLeague] = useState<(typeof LEAGUES)[number]>(LEAGUES[0]);
   const [fixtures, setFixtures] = useState<FixtureRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasSearched, setHasSearched] = useState(false);
 
   useEffect(() => {
     let active = true;
+
+    // Si no hay búsqueda: no cargar nada
+    if (!search) {
+      setFixtures([]);
+      setHasSearched(false);
+      setLoading(false);
+      return;
+    }
+
+    // Si hay búsqueda: cargar con sort 'next-first' en Chile, normal en Mundial
+    setHasSearched(true);
     setLoading(true);
     setError(null);
-    listFixtures(search, league.api)
+
+    const sortMode = league.api === 265 ? 'next-first' : 'all';
+    listFixtures(search, league.api, sortMode)
       .then((rows) => active && setFixtures(rows))
       .catch((e) => active && setError(String(e?.message ?? e)))
       .finally(() => active && setLoading(false));
+
     return () => {
       active = false;
     };
@@ -69,9 +84,17 @@ export default function MatchBoard() {
       <div className="mt-4 space-y-2">
         {loading && <p className="text-sm text-terminal-muted">Cargando…</p>}
         {error && <p className="text-sm text-signal-down">Error: {error}</p>}
-        {!loading && !error && fixtures.length === 0 && (
-          <p className="text-sm text-terminal-muted">Sin partidos en esta liga.</p>
+
+        {!hasSearched && !loading && (
+          <p className="text-sm text-terminal-muted">
+            {league.api === 265 ? 'Busca un equipo para ver sus partidos' : 'Busca un equipo o partido'}
+          </p>
         )}
+
+        {hasSearched && !loading && !error && fixtures.length === 0 && (
+          <p className="text-sm text-terminal-muted">Sin partidos con "{search}".</p>
+        )}
+
         {fixtures.map((f) => {
           const finished = f.status === 'finished' && f.home_goals != null && f.away_goals != null;
           return (

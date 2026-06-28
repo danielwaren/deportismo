@@ -7,6 +7,8 @@ import type {
   MatchDetailData,
   ModelOutputRow,
   PredictionRow,
+  StandingsOfficialRow,
+  StandingsEloRow,
 } from './types';
 
 export const isConfigured =
@@ -18,8 +20,9 @@ const FIXTURE_SELECT =
   'away:away_team_id(id,name,short_name,logo),' +
   'league:league_id!inner(api_id,name)';
 
-/** Partidos de una liga (api_id: 1 = Mundial, 265 = Primera de Chile). */
-export async function listFixtures(search = '', leagueApiId?: number): Promise<FixtureRow[]> {
+/** Partidos de una liga (api_id: 1 = Mundial, 265 = Primera de Chile).
+ *  sortMode: 'next-first' = próximos adelante, luego históricos. */
+export async function listFixtures(search = '', leagueApiId?: number, sortMode: 'next-first' | 'all' = 'all'): Promise<FixtureRow[]> {
   if (!isConfigured) {
     if (leagueApiId && leagueApiId !== 1) return [];
     const t = search.toLowerCase();
@@ -27,15 +30,27 @@ export async function listFixtures(search = '', leagueApiId?: number): Promise<F
       (f) => !t || f.home.name.toLowerCase().includes(t) || f.away.name.toLowerCase().includes(t),
     );
   }
-  let q = supabase.from('fixtures').select(FIXTURE_SELECT).order('kickoff', { ascending: false }).limit(80);
+  let q = supabase.from('fixtures').select(FIXTURE_SELECT).limit(200);
   if (leagueApiId != null) q = q.eq('league.api_id', leagueApiId);
   const { data, error } = await q;
   if (error) throw error;
   let rows = (data ?? []) as unknown as FixtureRow[];
+
   if (search) {
     const t = search.toLowerCase();
     rows = rows.filter((f) => f.home.name.toLowerCase().includes(t) || f.away.name.toLowerCase().includes(t));
+
+    if (sortMode === 'next-first') {
+      const now = new Date();
+      const upcoming = rows.filter((f) => new Date(f.kickoff) >= now);
+      const past = rows.filter((f) => new Date(f.kickoff) < now);
+      upcoming.sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime());
+      past.sort((a, b) => new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime());
+      return [...upcoming, ...past];
+    }
   }
+
+  rows.sort((a, b) => new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime());
   return rows;
 }
 
@@ -120,4 +135,27 @@ export async function saveConfig(patch: Partial<EnsembleConfigRow> & { id?: numb
   if (!patch.id) throw new Error('Falta el id de la configuración.');
   const { error } = await supabase.from('ensemble_config').update(patch).eq('id', patch.id);
   if (error) throw error;
+}
+
+/** Tabla de posiciones oficial (puntos acumulados). */
+export async function getStandingsOfficial(leagueId: number): Promise<StandingsOfficialRow[]> {
+  if (!isConfigured) return [];
+  const { data, error } = await supabase
+    .from('standings_official')
+    .select('position,league_id,team_id,team_name,short_name,logo,points,played,wins,draws,losses')
+    .eq('league_id', leagueId)
+    .order('position', { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as StandingsOfficialRow[];
+}
+
+/** Ranking Elo de todos los equipos. */
+export async function getStandingsElo(): Promise<StandingsEloRow[]> {
+  if (!isConfigured) return [];
+  const { data, error } = await supabase
+    .from('standings_elo')
+    .select('position,team_id,team_name,short_name,logo,rating,updated_at')
+    .order('position', { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as StandingsEloRow[];
 }

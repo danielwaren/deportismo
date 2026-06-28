@@ -58,3 +58,27 @@ export interface MatchDetailData {
   eloAway: number | null;
   source: 'supabase' | 'demo';
 }
+
+export interface StandingsOfficialRow {
+  position: number;
+  league_id: number;
+  team_id: number;
+  team_name: string;
+  short_name?: string | null;
+  logo?: string | null;
+  points: number;
+  played: number;
+  wins: number;
+  draws: number;
+  losses: number;
+}
+
+export interface StandingsEloRow {
+  position: number;
+  team_id: number;
+  team_name: string;
+  short_name?: string | null;
+  logo?: string | null;
+  rating: number;
+  updated_at: string;
+}

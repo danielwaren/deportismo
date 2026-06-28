@@ -364,6 +364,87 @@ $$;
 grant execute on function public.api_requests_today() to anon, authenticated;
 
 -- =============================================================================
+-- VISTAS DE STANDINGS (tablas de posiciones)
+-- =============================================================================
+
+-- Tabla de posiciones oficial: puntos acumulados (3W + 1D + 0L)
+create or replace view public.standings_official as
+  with match_points as (
+    select
+      f.league_id,
+      case when f.home_goals > f.away_goals then f.home_team_id else f.away_team_id end as winner_id,
+      case when f.home_goals = f.away_goals then f.home_team_id else null end as draw_home,
+      case when f.home_goals = f.away_goals then f.away_team_id else null end as draw_away,
+      case when f.home_goals < f.away_goals then f.home_team_id else f.away_team_id end as loser_id
+    from public.fixtures f
+    where f.status = 'finished' and f.home_goals is not null and f.away_goals is not null
+  ),
+  standings_calc as (
+    select
+      mp.league_id,
+      case when mp.winner_id is not null then mp.winner_id
+           when mp.draw_home is not null then mp.draw_home
+           else mp.loser_id end as team_id,
+      sum(case when mp.winner_id is not null and mp.winner_id = case when mp.winner_id is not null then mp.winner_id
+                    when mp.draw_home is not null then mp.draw_home else mp.loser_id end then 3 else 0 end) as points_from_wins,
+      sum(case when mp.draw_home is not null then 1 else 0 end) as points_from_draws,
+      count(*) as played
+    from match_points mp
+    group by mp.league_id, case when mp.winner_id is not null then mp.winner_id
+                                 when mp.draw_home is not null then mp.draw_home else mp.loser_id end
+  )
+  select
+    row_number() over (partition by l.id order by
+      (coalesce(sc.points_from_wins, 0) + coalesce(sc.points_from_draws, 0)) desc,
+      coalesce(sc.played, 0) desc) as position,
+    l.id as league_id,
+    t.id as team_id,
+    t.name as team_name,
+    t.short_name,
+    t.logo,
+    (coalesce(sc.points_from_wins, 0) + coalesce(sc.points_from_draws, 0)) as points,
+    coalesce(sc.played, 0) as played,
+    (select count(*) from public.fixtures f
+     where f.league_id = l.id and f.status = 'finished'
+     and ((f.home_team_id = t.id and f.home_goals > f.away_goals)
+           or (f.away_team_id = t.id and f.away_goals > f.home_goals))) as wins,
+    (select count(*) from public.fixtures f
+     where f.league_id = l.id and f.status = 'finished'
+     and f.home_goals = f.away_goals and (f.home_team_id = t.id or f.away_team_id = t.id)) as draws,
+    (select count(*) from public.fixtures f
+     where f.league_id = l.id and f.status = 'finished'
+     and ((f.home_team_id = t.id and f.home_goals < f.away_goals)
+           or (f.away_team_id = t.id and f.away_goals < f.home_goals))) as losses
+  from public.leagues l
+  join public.teams t on true
+  left join standings_calc sc on sc.league_id = l.id and sc.team_id = t.id
+  where l.season = 2026  -- solo temporada 2026
+  order by l.id, position;
+
+-- Ranking Elo: último Elo registrado por equipo (últimas 24h)
+create or replace view public.standings_elo as
+  with latest_elo as (
+    select distinct on (team_id)
+      team_id,
+      elo,
+      as_of
+    from public.team_elo_history
+    order by team_id, as_of desc
+  )
+  select
+    row_number() over (order by le.elo desc) as position,
+    t.id as team_id,
+    t.name as team_name,
+    t.short_name,
+    t.logo,
+    le.elo as rating,
+    le.as_of as updated_at
+  from latest_elo le
+  join public.teams t on t.id = le.team_id
+  where le.elo is not null
+  order by position;
+
+-- =============================================================================
 -- ROW LEVEL SECURITY
 --   * Lectura pública de datos de referencia/modelo (anon + authenticated).
 --   * Escritura de config/notas: solo admin.

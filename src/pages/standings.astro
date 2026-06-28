@@ -1,0 +1,18 @@
+---
+import Base from '../layouts/Base.astro';
+import StandingsPanel from '../components/StandingsPanel.tsx';
+---
+
+<Base title="Posiciones · STI">
+  <section class="mb-6">
+    <h1 class="text-xl font-semibold">Tablas de posiciones</h1>
+    <p class="mt-1 text-sm text-terminal-muted">
+      Tabla oficial (puntos acumulados) vs Ranking Elo (modelo predictivo). Compara las diferencias entre posiciones.
+    </p>
+  </section>
+
+  <div class="grid gap-6 lg:grid-cols-2">
+    <StandingsPanel client:load leagueId={265} title="Primera de Chile 2026" />
+    <StandingsPanel client:load leagueId={1} title="Mundial 2026" />
+  </div>
+</Base>
