@@ -20,14 +20,17 @@ const FIXTURE_SELECT =
   'away:away_team_id(id,name,short_name,logo),' +
   'league:league_id!inner(api_id,name)';
 
+/** Normaliza para búsqueda: minúsculas y sin acentos ("Canadá" -> "canada"). */
+const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+
 /** Partidos de una liga (api_id: 1 = Mundial, 265 = Primera de Chile).
  *  sortMode: 'next-first' = próximos adelante, luego históricos. */
 export async function listFixtures(search = '', leagueApiId?: number, sortMode: 'next-first' | 'all' = 'all'): Promise<FixtureRow[]> {
   if (!isConfigured) {
     if (leagueApiId && leagueApiId !== 1) return [];
-    const t = search.toLowerCase();
+    const t = norm(search);
     return DEMO_FIXTURES.filter(
-      (f) => !t || f.home.name.toLowerCase().includes(t) || f.away.name.toLowerCase().includes(t),
+      (f) => !t || norm(f.home.name).includes(t) || norm(f.away.name).includes(t),
     );
   }
   let q = supabase.from('fixtures').select(FIXTURE_SELECT).limit(200);
@@ -37,8 +40,8 @@ export async function listFixtures(search = '', leagueApiId?: number, sortMode: 
   let rows = (data ?? []) as unknown as FixtureRow[];
 
   if (search) {
-    const t = search.toLowerCase();
-    rows = rows.filter((f) => f.home.name.toLowerCase().includes(t) || f.away.name.toLowerCase().includes(t));
+    const t = norm(search);
+    rows = rows.filter((f) => norm(f.home.name).includes(t) || norm(f.away.name).includes(t));
 
     if (sortMode === 'next-first') {
       const now = new Date();
