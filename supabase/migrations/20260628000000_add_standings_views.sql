@@ -7,6 +7,7 @@
 
 -- Tabla oficial: puntos acumulados (3 victoria, 1 empate, 0 derrota) por liga.
 -- Solo cuenta fixtures 'finished' con marcador. Suma local + visita por equipo.
+-- Desempate: puntos -> diferencia de gol -> goles a favor (estándar de liga).
 create or replace view public.standings_official as
   with team_points as (
     select
@@ -16,6 +17,8 @@ create or replace view public.standings_official as
       sum(case when f.home_goals > f.away_goals then 1 else 0 end) as wins,
       sum(case when f.home_goals = f.away_goals then 1 else 0 end) as draws,
       sum(case when f.home_goals < f.away_goals then 1 else 0 end) as losses,
+      sum(f.home_goals) as gf,
+      sum(f.away_goals) as gc,
       count(*) as played
     from public.fixtures f
     where f.status = 'finished' and f.home_goals is not null and f.away_goals is not null
@@ -30,13 +33,18 @@ create or replace view public.standings_official as
       sum(case when f.away_goals > f.home_goals then 1 else 0 end) as wins,
       sum(case when f.away_goals = f.home_goals then 1 else 0 end) as draws,
       sum(case when f.away_goals < f.home_goals then 1 else 0 end) as losses,
+      sum(f.away_goals) as gf,
+      sum(f.home_goals) as gc,
       count(*) as played
     from public.fixtures f
     where f.status = 'finished' and f.home_goals is not null and f.away_goals is not null
     group by f.league_id, f.away_team_id
   )
   select
-    row_number() over (partition by l.api_id order by sum(tp.points) desc, sum(tp.played) desc) as position,
+    row_number() over (
+      partition by l.api_id
+      order by sum(tp.points) desc, (sum(tp.gf) - sum(tp.gc)) desc, sum(tp.gf) desc
+    ) as position,
     l.api_id as league_id,
     t.id as team_id,
     t.name as team_name,
@@ -46,7 +54,10 @@ create or replace view public.standings_official as
     sum(tp.played)::int as played,
     sum(tp.wins)::int as wins,
     sum(tp.draws)::int as draws,
-    sum(tp.losses)::int as losses
+    sum(tp.losses)::int as losses,
+    sum(tp.gf)::int as goals_for,
+    sum(tp.gc)::int as goals_against,
+    (sum(tp.gf) - sum(tp.gc))::int as goal_diff
   from team_points tp
   join public.teams t on t.id = tp.team_id
   join public.leagues l on l.id = tp.league_id

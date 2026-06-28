@@ -142,7 +142,7 @@ export async function getStandingsOfficial(leagueId: number): Promise<StandingsO
   if (!isConfigured) return [];
   const { data, error } = await supabase
     .from('standings_official')
-    .select('position,league_id,team_id,team_name,short_name,logo,points,played,wins,draws,losses')
+    .select('position,league_id,team_id,team_name,short_name,logo,points,played,wins,draws,losses,goals_for,goals_against,goal_diff')
     .eq('league_id', leagueId)
     .order('position', { ascending: true });
   if (error) throw error;

@@ -77,6 +77,7 @@ export default function StandingsPanel({ leagueId, title }: Props) {
                   <th className="text-center py-2 px-2">G</th>
                   <th className="text-center py-2 px-2">E</th>
                   <th className="text-center py-2 px-2">P</th>
+                  <th className="text-center py-2 px-2">DG</th>
                 </>
               ) : (
                 <th className="text-right py-2 px-2">Elo</th>
@@ -86,7 +87,7 @@ export default function StandingsPanel({ leagueId, title }: Props) {
           <tbody>
             {data.length === 0 ? (
               <tr>
-                <td colSpan={tab === 'official' ? 7 : 3} className="text-center py-4 text-terminal-muted">
+                <td colSpan={tab === 'official' ? 8 : 3} className="text-center py-4 text-terminal-muted">
                   Sin datos
                 </td>
               </tr>
@@ -110,6 +111,9 @@ export default function StandingsPanel({ leagueId, title }: Props) {
                       <td className="text-center py-2 px-2 text-signal-up">{row.wins}</td>
                       <td className="text-center py-2 px-2">{row.draws}</td>
                       <td className="text-center py-2 px-2 text-signal-down">{row.losses}</td>
+                      <td className="text-center py-2 px-2 tabular">
+                        {row.goal_diff > 0 ? `+${row.goal_diff}` : row.goal_diff}
+                      </td>
                     </>
                   ) : (
                     <td className="text-right py-2 px-2 font-semibold">

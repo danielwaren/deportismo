@@ -71,6 +71,9 @@ export interface StandingsOfficialRow {
   wins: number;
   draws: number;
   losses: number;
+  goals_for: number;
+  goals_against: number;
+  goal_diff: number;
 }
 
 export interface StandingsEloRow {
