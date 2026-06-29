@@ -125,3 +125,50 @@ export function tradingMetrics(bets: SettledBet[]): TradingMetrics {
     clv: clvN > 0 ? clvSum / clvN : 0,
   };
 }
+
+const betProfit = (b: SettledBet) => (b.won ? b.stake * (b.odds - 1) : -b.stake);
+
+/** Curva de crecimiento de banca: saldo tras cada apuesta (incluye el inicial). */
+export function bankrollCurve(bets: SettledBet[], start = 100): number[] {
+  const curve = [start];
+  let bank = start;
+  for (const b of bets) {
+    bank += betProfit(b);
+    curve.push(bank);
+  }
+  return curve;
+}
+
+/** Máximo drawdown (caída pico-valle) de una curva, como fracción [0,1]. */
+export function maxDrawdown(curve: number[]): number {
+  let peak = curve[0] ?? 0;
+  let mdd = 0;
+  for (const v of curve) {
+    if (v > peak) peak = v;
+    const dd = peak > 0 ? (peak - v) / peak : 0;
+    if (dd > mdd) mdd = dd;
+  }
+  return mdd;
+}
+
+/** Profit factor = ganancias brutas / pérdidas brutas. >1 = rentable. */
+export function profitFactor(bets: SettledBet[]): number {
+  let win = 0;
+  let loss = 0;
+  for (const b of bets) {
+    const p = betProfit(b);
+    if (p >= 0) win += p;
+    else loss += -p;
+  }
+  return loss > 0 ? win / loss : win > 0 ? Infinity : 0;
+}
+
+/** Sharpe ratio de los retornos por apuesta (media/desviación). */
+export function sharpeRatio(bets: SettledBet[]): number {
+  if (bets.length < 2) return 0;
+  const rets = bets.map((b) => betProfit(b) / b.stake);
+  const mean = rets.reduce((a, b) => a + b, 0) / rets.length;
+  const variance = rets.reduce((a, b) => a + (b - mean) ** 2, 0) / (rets.length - 1);
+  const sd = Math.sqrt(variance);
+  return sd > 0 ? mean / sd : 0;
+}

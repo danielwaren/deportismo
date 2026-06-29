@@ -39,6 +39,10 @@ import {
   dynamicWeights,
   calibrationError,
   tradingMetrics,
+  bankrollCurve,
+  maxDrawdown,
+  profitFactor,
+  sharpeRatio,
   expectedValue,
   kellyFraction,
   analyzeValue,
@@ -427,6 +431,26 @@ describe('Calibración trading (#8)', () => {
     expect(m.roi).toBeCloseTo(0, 6);
     expect(m.hitRate).toBeCloseTo(0.5, 6);
     expect(m.clv).toBeGreaterThan(0); // apostó 2.0 con cierres 1.8/2.1 => CLV+ medio
+  });
+
+  it('bankrollCurve, drawdown, profitFactor y sharpe sobre una serie', () => {
+    const bets = [
+      { stake: 1, odds: 2.0, won: true },   // +1
+      { stake: 1, odds: 2.0, won: false },  // -1
+      { stake: 1, odds: 2.0, won: false },  // -1
+      { stake: 1, odds: 3.0, won: true },   // +2
+    ];
+    const curve = bankrollCurve(bets, 100);
+    expect(curve[0]).toBe(100);
+    expect(curve[curve.length - 1]).toBe(101); // +1 -1 -1 +2
+    expect(maxDrawdown(curve)).toBeGreaterThan(0); // hubo caída tras el pico 101
+    expect(profitFactor(bets)).toBeCloseTo(3 / 2, 6); // ganancias 3, pérdidas 2
+    expect(Number.isFinite(sharpeRatio(bets))).toBe(true);
+  });
+
+  it('profitFactor infinito sin pérdidas; drawdown 0 en curva creciente', () => {
+    expect(profitFactor([{ stake: 1, odds: 2, won: true }])).toBe(Infinity);
+    expect(maxDrawdown([100, 110, 120])).toBe(0);
   });
 });
 

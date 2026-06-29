@@ -1,4 +1,4 @@
-import type { CalibrationPoint } from '@sti/model';
+import type { CalibrationPoint, SettledBet } from '@sti/model';
 import { supabase } from './supabase';
 import { analyzeMatch, type MatchAnalysis, type PredictInput, type TeamElo } from './predict';
 import { DEMO_CONFIG, DEMO_FIXTURES, demoCalibration, demoDetail } from './demo';
@@ -107,6 +107,74 @@ export async function getMatchDetail(id: number): Promise<MatchDetailData | null
     eloAway,
     source: 'supabase',
   };
+}
+
+export interface TrackRecord {
+  calibrationPoints: CalibrationPoint[]; // todas las selecciones resueltas
+  bets: SettledBet[]; // pick del modelo CON cuota real (para banca/ROI)
+  hitRate: number; // acierto del pick del modelo sobre TODOS los partidos
+  totalPicks: number;
+}
+
+/**
+ * Track record histórico del modelo: precisión (calibración) sobre todas las
+ * predicciones resueltas + backtest de banca sobre los picks con cuota real.
+ */
+export async function getModelTrackRecord(): Promise<TrackRecord> {
+  const empty: TrackRecord = { calibrationPoints: [], bets: [], hitRate: 0, totalPicks: 0 };
+  if (!isConfigured) return empty;
+
+  const { data: preds, error } = await supabase
+    .from('predictions')
+    .select('fixture_id, selection, model_prob, fixtures!inner(home_goals, away_goals, kickoff, status)')
+    .eq('market', '1x2')
+    .eq('fixtures.status', 'finished');
+  if (error || !preds) return empty;
+
+  const won = (sel: string, hg: number, ag: number) =>
+    sel === 'home' ? hg > ag : sel === 'draw' ? hg === ag : hg < ag;
+
+  const calibrationPoints: CalibrationPoint[] = [];
+  type Row = { fixture_id: number; selection: string; prob: number; hg: number; ag: number; kickoff: string };
+  const byFixture = new Map<number, Row[]>();
+  for (const p of preds as any[]) {
+    const fx = p.fixtures;
+    if (fx?.home_goals == null || fx?.away_goals == null) continue;
+    const w = won(p.selection, fx.home_goals, fx.away_goals);
+    calibrationPoints.push({ prob: Number(p.model_prob), outcome: w ? 1 : 0 });
+    const row: Row = { fixture_id: p.fixture_id, selection: p.selection, prob: Number(p.model_prob), hg: fx.home_goals, ag: fx.away_goals, kickoff: fx.kickoff };
+    const arr = byFixture.get(p.fixture_id) ?? [];
+    arr.push(row);
+    byFixture.set(p.fixture_id, arr);
+  }
+
+  // Cuotas (decimal) por fixture+selección para liquidar los picks.
+  const fixtureIds = [...byFixture.keys()];
+  const oddsMap = new Map<string, number>();
+  if (fixtureIds.length) {
+    const { data: oddsRows } = await supabase
+      .from('odds')
+      .select('fixture_id, selection, odds')
+      .in('fixture_id', fixtureIds)
+      .eq('market', '1x2');
+    for (const o of (oddsRows ?? []) as any[]) oddsMap.set(`${o.fixture_id}:${o.selection}`, Number(o.odds));
+  }
+
+  // Pick del modelo por partido = selección de mayor probabilidad.
+  const picks = [...byFixture.values()]
+    .map((rows) => rows.reduce((m, r) => (r.prob > m.prob ? r : m), rows[0]!))
+    .sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime());
+
+  let hits = 0;
+  const bets: SettledBet[] = [];
+  for (const pick of picks) {
+    const pickWon = won(pick.selection, pick.hg, pick.ag);
+    if (pickWon) hits++;
+    const odds = oddsMap.get(`${pick.fixture_id}:${pick.selection}`);
+    if (odds && odds > 1) bets.push({ stake: 1, odds, won: pickWon });
+  }
+
+  return { calibrationPoints, bets, hitRate: picks.length ? hits / picks.length : 0, totalPicks: picks.length };
 }
 
 /** Puntos de calibración (prob predicha vs resultado real) para 1X2 resueltos. */

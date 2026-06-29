@@ -1,0 +1,17 @@
+---
+import Base from '../layouts/Base.astro';
+import HistoryPanel from '../components/HistoryPanel.tsx';
+---
+
+<Base title="Histórico · STI">
+  <section class="mb-6">
+    <h1 class="text-xl font-semibold">Histórico del modelo</h1>
+    <p class="mt-1 text-sm text-terminal-muted">
+      Track record sobre predicciones resueltas: precisión (acierto, Brier, log-loss,
+      calibración) y backtest de banca (ROI, profit factor, drawdown, Sharpe, CLV)
+      donde hay cuotas de mercado.
+    </p>
+  </section>
+
+  <HistoryPanel client:load />
+</Base>
