@@ -101,3 +101,48 @@ export function combineEnsemble(input: {
   const final = blend1x2(poisson.oneXtwo, elo, wPoisson);
   return { lambdaHome, lambdaAway, poisson, elo, final };
 }
+
+// =============================================================================
+// RUTA PRINCIPISTA (Fase 1): lambdas = ataque×defensa×media_liga×localía, con el
+// Elo multi-componente. Réplica de packages/model (elo.ts + lambdas.ts) para el
+// runtime Deno. Es la que persiste el modelo canónico nuevo (analyzeFixture).
+// =============================================================================
+
+export function eloToAttackStrength(offensiveElo: number, leagueAvgElo: number, k = 1): number {
+  return Math.exp((k * (offensiveElo - leagueAvgElo)) / 400);
+}
+export function eloToDefenseStrength(defensiveElo: number, leagueAvgElo: number, k = 1): number {
+  return Math.exp((-k * (defensiveElo - leagueAvgElo)) / 400);
+}
+
+export function computeLambdas(i: {
+  leagueAvgGoals: number; homeAttack: number; awayDefense: number;
+  awayAttack: number; homeDefense: number; homeAdvantage?: number;
+}): { lambdaHome: number; lambdaAway: number } {
+  let lh = i.leagueAvgGoals * i.homeAttack * i.awayDefense * (i.homeAdvantage ?? 1);
+  let la = i.leagueAvgGoals * i.awayAttack * i.homeDefense;
+  lh = Math.max(0.05, Math.min(lh, 6));
+  la = Math.max(0.05, Math.min(la, 6));
+  return { lambdaHome: lh, lambdaAway: la };
+}
+
+export interface TeamElo { general: number; offensive: number; defensive: number; }
+
+export function analyzeFixture(i: {
+  home: TeamElo; away: TeamElo; leagueAvgElo: number; leagueAvgGoals: number;
+  homeAdvElo: number; weights?: { poisson: number; elo: number };
+}) {
+  const ha = Math.exp(i.homeAdvElo / 400);
+  const homeAttack = eloToAttackStrength(i.home.offensive, i.leagueAvgElo);
+  const awayDefense = eloToDefenseStrength(i.away.defensive, i.leagueAvgElo);
+  const awayAttack = eloToAttackStrength(i.away.offensive, i.leagueAvgElo);
+  const homeDefense = eloToDefenseStrength(i.home.defensive, i.leagueAvgElo);
+  const { lambdaHome, lambdaAway } = computeLambdas({
+    leagueAvgGoals: i.leagueAvgGoals, homeAttack, awayDefense, awayAttack, homeDefense, homeAdvantage: ha,
+  });
+  const poisson = buildScoreMatrix(lambdaHome, lambdaAway);
+  const elo = eloToOneXtwo(i.home.general, i.away.general, { homeAdvantage: i.homeAdvElo, kBase: 24 });
+  const wp = i.weights?.poisson ?? 0.6, we = i.weights?.elo ?? 0.4;
+  const final = blend1x2(poisson.oneXtwo, elo, wp / (wp + we));
+  return { lambdaHome, lambdaAway, poisson, elo, final };
+}

@@ -1,10 +1,10 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { combineEnsemble } from './model.ts';
+import { analyzeFixture, type TeamElo } from './model.ts';
 
-// recompute-models — recalcula las probabilidades del modelo (Dixon-Coles + Elo)
-// para TODOS los partidos por jugar, leyendo el Elo actual (que el cron entrena).
-// Solo toca fixtures 'scheduled': los jugados quedan congelados (sin look-ahead).
-// La invoca el cron tras el entrenamiento de Elo. Es idempotente.
+// recompute-models — recalcula y PERSISTE las probabilidades del modelo CANÓNICO
+// (Fase 1: Elo multi-componente + lambdas principistas ataque×defensa) para los
+// partidos por jugar. Solo toca fixtures 'scheduled' (los jugados quedan
+// congelados, sin look-ahead). Idempotente. La invoca el cron tras entrenar Elo.
 
 const admin = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -12,35 +12,71 @@ const admin = createClient(
   { auth: { persistSession: false } },
 );
 
-async function latestElo(teamId: number): Promise<number> {
+const MODEL_VERSION = 'dc-elo-multi-1.0.0';
+const LEAGUE_AVG_GOALS: Record<number, number> = { 1: 1.45, 265: 1.2 };
+
+/** Últimos Elo por componente (general/offensive/defensive) de un equipo. */
+async function components(teamId: number): Promise<TeamElo> {
   const { data } = await admin
     .from('team_elo_history')
-    .select('elo')
+    .select('elo, component, as_of')
     .eq('team_id', teamId)
-    .order('as_of', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  return data ? Number(data.elo) : 1500;
+    .in('component', ['general', 'offensive', 'defensive'])
+    .order('as_of', { ascending: false });
+  const latest = (c: string) => {
+    const r = (data ?? []).find((x) => x.component === c);
+    return r ? Number(r.elo) : NaN;
+  };
+  const general = Number.isFinite(latest('general')) ? latest('general') : 1500;
+  const offensive = Number.isFinite(latest('offensive')) ? latest('offensive') : general;
+  const defensive = Number.isFinite(latest('defensive')) ? latest('defensive') : general;
+  return { general, offensive, defensive };
+}
+
+/** Elo general medio de una liga (vía standings_elo, cacheado por api_id). */
+const avgCache = new Map<number, number>();
+async function leagueAvgElo(apiId: number): Promise<number> {
+  if (avgCache.has(apiId)) return avgCache.get(apiId)!;
+  const { data } = await admin.from('standings_elo').select('rating').eq('league_id', apiId);
+  const ratings = (data ?? []).map((r) => Number(r.rating)).filter((n) => Number.isFinite(n));
+  const avg = ratings.length ? ratings.reduce((a, b) => a + b, 0) / ratings.length : 1500;
+  avgCache.set(apiId, avg);
+  return avg;
 }
 
 Deno.serve(async () => {
   try {
+    // Asegura la fila de versión (FK de match_model_outputs/predictions).
+    await admin.from('model_versions').upsert(
+      { version: MODEL_VERSION, description: 'Elo multi-componente + lambdas principistas (ataque×defensa)' },
+      { onConflict: 'version' },
+    );
+
     const { data: fixtures } = await admin
       .from('fixtures')
-      .select('id, home_team_id, away_team_id, league:league_id(elo_home_adv)')
+      .select('id, home_team_id, away_team_id, league:league_id(api_id, elo_home_adv)')
       .eq('status', 'scheduled');
 
     let n = 0;
     for (const fx of fixtures ?? []) {
-      const [eh, ea] = await Promise.all([latestElo(fx.home_team_id), latestElo(fx.away_team_id)]);
-      // Ventaja de local de la liga (0 en torneos neutros como el Mundial, ~65 en liga).
-      const homeAdv = Number((fx as any).league?.elo_home_adv ?? 0);
-      const r = combineEnsemble({ eloHome: eh, eloAway: ea, homeAdvantage: homeAdv, context: 0 });
+      const apiId = Number((fx as any).league?.api_id ?? 0);
+      const homeAdvElo = Number((fx as any).league?.elo_home_adv ?? 0);
+      const [home, away, avgElo] = await Promise.all([
+        components(fx.home_team_id),
+        components(fx.away_team_id),
+        leagueAvgElo(apiId),
+      ]);
+
+      const r = analyzeFixture({
+        home, away, leagueAvgElo: avgElo,
+        leagueAvgGoals: LEAGUE_AVG_GOALS[apiId] ?? 1.35,
+        homeAdvElo,
+      });
 
       await admin.from('match_model_outputs').upsert(
         {
           fixture_id: fx.id,
-          model_version: 'dc-elo-ctx-0.1.0',
+          model_version: MODEL_VERSION,
           lambda_home: r.lambdaHome,
           lambda_away: r.lambdaAway,
           prob_home: r.final.home,
@@ -55,8 +91,7 @@ Deno.serve(async () => {
         { onConflict: 'fixture_id,model_version' },
       );
 
-      // Predicciones 1X2: modelo vs cuotas (si hay). flagged_value OFF (modelo
-      // aún sin validar probabilísticamente).
+      // Predicciones 1X2: modelo vs cuotas (si hay). flagged_value OFF.
       const { data: odds } = await admin
         .from('odds')
         .select('selection, implied_prob')
@@ -68,7 +103,7 @@ Deno.serve(async () => {
         const mp = o ? Number(o.implied_prob) : null;
         return {
           fixture_id: fx.id,
-          model_version: 'dc-elo-ctx-0.1.0',
+          model_version: MODEL_VERSION,
           market: '1x2',
           selection: sel,
           model_prob: probs[sel],
@@ -81,7 +116,7 @@ Deno.serve(async () => {
       await admin.from('predictions').insert(rows);
       n++;
     }
-    return Response.json({ recomputed: n });
+    return Response.json({ recomputed: n, model: MODEL_VERSION });
   } catch (e) {
     return Response.json({ error: String((e as Error)?.message ?? e) }, { status: 500 });
   }
