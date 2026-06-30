@@ -128,9 +128,18 @@ export function computeLambdas(i: {
 
 export interface TeamElo { general: number; offensive: number; defensive: number; }
 
+// Modelo ML (regresión logística softmax) — vendorizado para mezclar su 1X2.
+export interface LogRegWeights { w: number[][]; b: number[]; mean: number[]; std: number[]; featureNames: string[]; }
+function mlPredict(weights: LogRegWeights, features: number[]) {
+  const x = features.map((v, j) => (v - weights.mean[j]) / (weights.std[j] || 1));
+  const z = [0, 1, 2].map((c) => weights.b[c] + weights.w[c].reduce((a, wj, j) => a + wj * x[j], 0));
+  const m = Math.max(...z); const e = z.map((v) => Math.exp(v - m)); const s = e.reduce((a, b) => a + b, 0) || 1;
+  return { home: e[0] / s, draw: e[1] / s, away: e[2] / s };
+}
+
 export function analyzeFixture(i: {
   home: TeamElo; away: TeamElo; leagueAvgElo: number; leagueAvgGoals: number;
-  homeAdvElo: number; weights?: { poisson: number; elo: number };
+  homeAdvElo: number; weights?: { poisson: number; elo: number }; mlWeights?: LogRegWeights | null;
 }) {
   const ha = Math.exp(i.homeAdvElo / 400);
   const homeAttack = eloToAttackStrength(i.home.offensive, i.leagueAvgElo);
@@ -143,6 +152,12 @@ export function analyzeFixture(i: {
   const poisson = buildScoreMatrix(lambdaHome, lambdaAway);
   const elo = eloToOneXtwo(i.home.general, i.away.general, { homeAdvantage: i.homeAdvElo, kBase: 24 });
   const wp = i.weights?.poisson ?? 0.6, we = i.weights?.elo ?? 0.4;
-  const final = blend1x2(poisson.oneXtwo, elo, wp / (wp + we));
+  let final = blend1x2(poisson.oneXtwo, elo, wp / (wp + we));
+  if (i.mlWeights) {
+    const feats = [(i.home.general - i.away.general) / 100, (i.home.offensive - i.away.defensive) / 100,
+      (i.away.offensive - i.home.defensive) / 100, i.homeAdvElo / 100, 0, 0];
+    const ml = mlPredict(i.mlWeights, feats);
+    final = blend1x2(final, ml, 0.75); // 25% al modelo ML
+  }
   return { lambdaHome, lambdaAway, poisson, elo, final };
 }

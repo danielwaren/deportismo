@@ -48,9 +48,13 @@ Deno.serve(async () => {
   try {
     // Asegura la fila de versión (FK de match_model_outputs/predictions).
     await admin.from('model_versions').upsert(
-      { version: MODEL_VERSION, description: 'Elo multi-componente + lambdas principistas (ataque×defensa)' },
+      { version: MODEL_VERSION, description: 'Elo multi-componente + lambdas principistas (ataque×defensa) + ML' },
       { onConflict: 'version' },
     );
+
+    // Pesos del modelo ML (si existen) para mezclar su 1X2 en el ensemble.
+    const { data: mlRow } = await admin.from('ml_models').select('weights').eq('id', 'logreg').maybeSingle();
+    const mlWeights = (mlRow?.weights as any) ?? null;
 
     const { data: fixtures } = await admin
       .from('fixtures')
@@ -70,7 +74,7 @@ Deno.serve(async () => {
       const r = analyzeFixture({
         home, away, leagueAvgElo: avgElo,
         leagueAvgGoals: LEAGUE_AVG_GOALS[apiId] ?? 1.35,
-        homeAdvElo,
+        homeAdvElo, mlWeights,
       });
 
       await admin.from('match_model_outputs').upsert(
