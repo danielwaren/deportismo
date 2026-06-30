@@ -194,6 +194,14 @@ export default function MatchDashboard({ analysis, homeName, awayName }: { analy
         <p className="mt-3 rounded-md border border-terminal-border bg-terminal-bg px-3 py-2 text-sm">
           <span className="text-terminal-muted">Lectura del modelo: </span>{a.narrative}
         </p>
+        {/* Miembros del ensemble: prob. de victoria local de cada motor */}
+        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-terminal-muted">
+          <span className="uppercase tracking-wider">Ensemble (1):</span>
+          <span>Poisson <span className="tabular text-terminal-text">{pct0(a.poisson.oneXtwo.home)}</span></span>
+          <span>Elo <span className="tabular text-terminal-text">{pct0(a.elo1x2.home)}</span></span>
+          {a.ml1x2 && <span>ML <span className="tabular text-terminal-text">{pct0(a.ml1x2.home)}</span></span>}
+          <span>Final <span className="tabular text-signal-up">{pct0(a.final.home)}</span></span>
+        </div>
         <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
             ['λ local / visita', `${a.lambdaHome.toFixed(2)} / ${a.lambdaAway.toFixed(2)}`],

@@ -25,6 +25,9 @@ import {
   buildNarrative,
   eloToAttackStrength,
   eloToDefenseStrength,
+  extractFeatures,
+  predictLogReg,
+  type LogRegWeights,
   type Explanation,
   type Outcome1x2,
   type PoissonOutput,
@@ -55,6 +58,7 @@ export interface PredictInput {
   restAdvantage?: number; // [-1, 1] a favor del local
   injuriesHome?: number; // [0, 1] severidad
   injuriesAway?: number;
+  mlWeights?: LogRegWeights | null; // pesos del modelo ML (ml_models); si faltan, no se usa
 }
 
 export interface ValueRow {
@@ -73,6 +77,7 @@ export interface MatchAnalysis {
   lambdaAway: number;
   poisson: PoissonOutput;
   elo1x2: Outcome1x2;
+  ml1x2: Outcome1x2 | null; // predicción del modelo ML (si hay pesos)
   final: Outcome1x2;
   montecarlo: MonteCarloResult;
   confidence: ReturnType<typeof confidenceIndex>;
@@ -115,7 +120,22 @@ export function analyzeMatch(i: PredictInput): MatchAnalysis {
     homeAdvantage: i.homeAdvElo,
   });
   const wPoisson = weights.poisson / (weights.poisson + weights.elo);
-  const final = blend1x2(poisson.oneXtwo, elo1x2, wPoisson);
+  const base = blend1x2(poisson.oneXtwo, elo1x2, wPoisson);
+
+  // Miembro ML del ensemble (regresión logística): si hay pesos, mezcla su 1X2.
+  let ml1x2: Outcome1x2 | null = null;
+  let final = base;
+  if (i.mlWeights) {
+    const feats = extractFeatures({
+      homeGeneral: i.home.general, awayGeneral: i.away.general,
+      homeOff: i.home.offensive, homeDef: i.home.defensive,
+      awayOff: i.away.offensive, awayDef: i.away.defensive,
+      homeAdvElo: i.homeAdvElo,
+      formHome: i.formHome, formAway: i.formAway, restAdv: i.restAdvantage,
+    });
+    ml1x2 = predictLogReg(i.mlWeights, feats);
+    final = blend1x2(base, ml1x2, 0.75); // 25% al modelo ML
+  }
 
   // 6) Monte Carlo (distribuciones empíricas).
   const montecarlo = simulateMatch(lambdas.lambdaHome, lambdas.lambdaAway, {
@@ -157,6 +177,7 @@ export function analyzeMatch(i: PredictInput): MatchAnalysis {
     lambdaAway: lambdas.lambdaAway,
     poisson,
     elo1x2,
+    ml1x2,
     final,
     montecarlo,
     confidence,

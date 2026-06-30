@@ -1,4 +1,4 @@
-import type { CalibrationPoint, SettledBet } from '@sti/model';
+import type { CalibrationPoint, SettledBet, LogRegWeights } from '@sti/model';
 import { supabase } from './supabase';
 import { analyzeMatch, type MatchAnalysis, type PredictInput, type TeamElo } from './predict';
 import { DEMO_CONFIG, DEMO_FIXTURES, demoCalibration, demoDetail } from './demo';
@@ -14,6 +14,16 @@ import type {
 
 export const isConfigured =
   !!import.meta.env.PUBLIC_SUPABASE_URL && !!import.meta.env.PUBLIC_SUPABASE_ANON_KEY;
+
+// Pesos del modelo ML (ml_models), cacheados en memoria por sesión.
+let _mlWeights: LogRegWeights | null | undefined;
+export async function getMlWeights(): Promise<LogRegWeights | null> {
+  if (_mlWeights !== undefined) return _mlWeights;
+  if (!isConfigured) return (_mlWeights = null);
+  const { data } = await supabase.from('ml_models').select('weights').eq('id', 'logreg').maybeSingle();
+  _mlWeights = (data?.weights as LogRegWeights) ?? null;
+  return _mlWeights;
+}
 
 const FIXTURE_SELECT =
   'id,kickoff,status,round,home_goals,away_goals,' +
@@ -368,7 +378,7 @@ export async function getMatchAnalysis(id: number): Promise<{ analysis: MatchAna
   const leagueApiId = fx.league?.api_id as number;
   const homeAdvElo = Number(fx.league?.elo_home_adv ?? 0);
 
-  const [{ data: eloRows }, { data: standings }, { data: oddsRows }] = await Promise.all([
+  const [{ data: eloRows }, { data: standings }, { data: oddsRows }, mlWeights] = await Promise.all([
     supabase
       .from('team_elo_history')
       .select('team_id,elo,component,as_of')
@@ -377,6 +387,7 @@ export async function getMatchAnalysis(id: number): Promise<{ analysis: MatchAna
       .order('as_of', { ascending: false }),
     supabase.from('standings_elo').select('rating').eq('league_id', leagueApiId),
     supabase.from('odds').select('selection,odds').eq('fixture_id', id).eq('market', '1x2'),
+    getMlWeights(),
   ]);
 
   const rows = (eloRows ?? []) as Array<{ team_id: number; elo: number; component: string }>;
@@ -400,7 +411,7 @@ export async function getMatchAnalysis(id: number): Promise<{ analysis: MatchAna
     homeName: fx.home.name, awayName: fx.away.name,
     home, away, leagueAvgElo,
     leagueAvgGoals: LEAGUE_AVG_GOALS[leagueApiId] ?? 1.35,
-    homeAdvElo, odds, seed: id,
+    homeAdvElo, odds, seed: id, mlWeights,
   };
   return { analysis: analyzeMatch(input), input, homeName: fx.home.name, awayName: fx.away.name };
 }
