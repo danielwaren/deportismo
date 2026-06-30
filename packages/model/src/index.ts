@@ -9,6 +9,8 @@ export * from './model';
 export * from './elo';
 export * from './lambdas';
 export * from './xg';
+export * from './features';
+export * from './logreg';
 export * from './montecarlo';
 export * from './poisson';
 export * from './ensemble';

@@ -54,6 +54,12 @@ import {
   composeExplanation,
   buildNarrative,
   predictionSummary,
+  extractFeatures,
+  FEATURE_NAMES,
+  trainLogReg,
+  predictLogReg,
+  createLogRegModel,
+  type TrainSample,
 } from '../src/index';
 
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
@@ -541,6 +547,47 @@ describe('Explainable AI (#12)', () => {
     expect(n).toContain('Ataque local +12%');
     expect(n).toContain('→');
     expect(n).toContain('72%');
+  });
+});
+
+describe('ML · features + regresión logística', () => {
+  it('extractFeatures respeta el orden de FEATURE_NAMES', () => {
+    const f = extractFeatures({
+      homeGeneral: 1700, awayGeneral: 1500, homeOff: 1650, homeDef: 1600,
+      awayOff: 1550, awayDef: 1450, homeAdvElo: 65, formHome: 0.5, formAway: -0.2, restAdv: 0.3,
+    });
+    expect(f).toHaveLength(FEATURE_NAMES.length);
+    expect(f[0]).toBeCloseTo(2.0, 6); // (1700-1500)/100
+    expect(f[3]).toBeCloseTo(0.65, 6); // 65/100
+    expect(f[4]).toBeCloseTo(0.7, 6); // 0.5 - (-0.2)
+  });
+
+  it('trainLogReg aprende un patrón separable (feature 0 decide)', () => {
+    const samples: TrainSample[] = [];
+    for (let i = 0; i < 120; i++) {
+      const d = (i % 2 === 0 ? 1 : -1) * (0.5 + Math.random());
+      // home gana si feature0 > 0, away si < 0
+      samples.push({ features: [d, 0, 0, 0, 0, 0], label: d > 0 ? 0 : 2 });
+    }
+    const w = trainLogReg(samples, FEATURE_NAMES, { epochs: 200, lr: 0.5 });
+    const pHome = predictLogReg(w, [1.5, 0, 0, 0, 0, 0]);
+    const pAway = predictLogReg(w, [-1.5, 0, 0, 0, 0, 0]);
+    expect(pHome.home + pHome.draw + pHome.away).toBeCloseTo(1, 6);
+    expect(pHome.home).toBeGreaterThan(0.7); // aprendió: feature0 alto -> local
+    expect(pAway.away).toBeGreaterThan(0.7); // feature0 bajo -> visita
+  });
+
+  it('createLogRegModel cumple PredictionModel y explica', () => {
+    const samples: TrainSample[] = Array.from({ length: 60 }, (_, i) => {
+      const d = i < 30 ? 1 : -1;
+      return { features: [d, 0, 0, 0, 0, 0], label: (d > 0 ? 0 : 2) as 0 | 2 };
+    });
+    const model = createLogRegModel(trainLogReg(samples, FEATURE_NAMES, { epochs: 150 }));
+    expect(model.id).toBe('logreg');
+    const out = model.predict([2, 0, 0, 0, 0, 0]);
+    expect(out.oneXtwo.home + out.oneXtwo.draw + out.oneXtwo.away).toBeCloseTo(1, 6);
+    expect(out.oneXtwo.home).toBeGreaterThan(out.oneXtwo.away);
+    expect(out.explanation.factors.length).toBeGreaterThan(0);
   });
 });
 
