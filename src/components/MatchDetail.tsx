@@ -6,6 +6,7 @@ import type { MatchAnalysis } from '../lib/predict';
 import Prob1x2 from './Prob1x2';
 import MatchDashboard from './MatchDashboard';
 import SimulationLab from './SimulationLab';
+import MatchCharts from './MatchCharts';
 
 const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
 
@@ -80,6 +81,13 @@ export default function MatchDetail({ id }: { id: number }) {
       {analysis && (
         <>
           <MatchDashboard analysis={analysis.analysis} homeName={analysis.homeName} awayName={analysis.awayName} />
+          <MatchCharts
+            homeId={fixture.home.id}
+            awayId={fixture.away.id}
+            leagueApiId={fixture.league?.api_id ?? 0}
+            homeName={analysis.homeName}
+            awayName={analysis.awayName}
+          />
           <SimulationLab input={analysis.input} homeName={analysis.homeName} awayName={analysis.awayName} />
         </>
       )}

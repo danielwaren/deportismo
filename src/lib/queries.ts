@@ -109,6 +109,47 @@ export async function getMatchDetail(id: number): Promise<MatchDetailData | null
   };
 }
 
+export interface TeamCharts {
+  history: number[]; // Elo general en el tiempo (orden cronológico)
+  components: { general: number; offensive: number; defensive: number; home: number; away: number };
+}
+export interface MatchChartData {
+  home: TeamCharts;
+  away: TeamCharts;
+  leagueAvgElo: number;
+}
+
+/** Datos para los gráficos del partido: evolución de Elo + componentes (radar). */
+export async function getMatchChartData(homeId: number, awayId: number, leagueApiId: number): Promise<MatchChartData> {
+  const blank = (): TeamCharts => ({ history: [], components: { general: 1500, offensive: 1500, defensive: 1500, home: 1500, away: 1500 } });
+  if (!isConfigured) return { home: blank(), away: blank(), leagueAvgElo: 1500 };
+
+  const [{ data: rows }, { data: standings }] = await Promise.all([
+    supabase
+      .from('team_elo_history')
+      .select('team_id, elo, component, as_of')
+      .in('team_id', [homeId, awayId])
+      .in('component', ['general', 'offensive', 'defensive', 'home', 'away'])
+      .order('as_of', { ascending: true }),
+    supabase.from('standings_elo').select('rating').eq('league_id', leagueApiId),
+  ]);
+
+  const build = (teamId: number): TeamCharts => {
+    const r = (rows ?? []).filter((x: any) => x.team_id === teamId);
+    const history = r.filter((x: any) => x.component === 'general').map((x: any) => Number(x.elo)).slice(-24);
+    const latest = (c: string) => {
+      const m = r.filter((x: any) => x.component === c);
+      return m.length ? Number(m[m.length - 1].elo) : history[history.length - 1] ?? 1500;
+    };
+    const general = latest('general');
+    return { history, components: { general, offensive: latest('offensive') || general, defensive: latest('defensive') || general, home: latest('home') || general, away: latest('away') || general } };
+  };
+
+  const ratings = (standings ?? []).map((s: any) => Number(s.rating)).filter((n) => Number.isFinite(n));
+  const leagueAvgElo = ratings.length ? ratings.reduce((a, b) => a + b, 0) / ratings.length : 1500;
+  return { home: build(homeId), away: build(awayId), leagueAvgElo };
+}
+
 export interface TrackRecord {
   calibrationPoints: CalibrationPoint[]; // todas las selecciones resueltas
   bets: SettledBet[]; // pick del modelo CON cuota real (para banca/ROI)
