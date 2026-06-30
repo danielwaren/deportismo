@@ -109,6 +109,63 @@ export async function getMatchDetail(id: number): Promise<MatchDetailData | null
   };
 }
 
+export interface UpcomingMatch {
+  id: number;
+  kickoff: string;
+  leagueName: string;
+  leagueApiId: number;
+  home: string;
+  away: string;
+  homeShort?: string | null;
+  awayShort?: string | null;
+  pick: 'home' | 'draw' | 'away' | null;
+  probs: { home: number; draw: number; away: number } | null;
+}
+
+/** Próximos partidos (todas las ligas) con la predicción persistida del modelo. */
+export async function getUpcomingMatches(limit = 24): Promise<UpcomingMatch[]> {
+  if (!isConfigured) {
+    return DEMO_FIXTURES.map((f) => ({
+      id: f.id, kickoff: f.kickoff, leagueName: f.league?.name ?? '', leagueApiId: f.league?.api_id ?? 1,
+      home: f.home.name, away: f.away.name, homeShort: f.home.short_name, awayShort: f.away.short_name,
+      pick: null, probs: null,
+    }));
+  }
+  const { data: fx, error } = await supabase
+    .from('fixtures')
+    .select('id,kickoff,home:home_team_id(name,short_name),away:away_team_id(name,short_name),league:league_id!inner(api_id,name)')
+    .eq('status', 'scheduled')
+    .order('kickoff', { ascending: true })
+    .limit(limit);
+  if (error || !fx) return [];
+
+  const ids = (fx as any[]).map((f) => f.id);
+  const probMap = new Map<number, { home: number; draw: number; away: number }>();
+  if (ids.length) {
+    const { data: mo } = await supabase
+      .from('match_model_outputs')
+      .select('fixture_id,prob_home,prob_draw,prob_away,created_at')
+      .in('fixture_id', ids)
+      .order('created_at', { ascending: false });
+    for (const m of (mo ?? []) as any[]) {
+      if (!probMap.has(m.fixture_id)) probMap.set(m.fixture_id, { home: Number(m.prob_home), draw: Number(m.prob_draw), away: Number(m.prob_away) });
+    }
+  }
+
+  return (fx as any[]).map((f) => {
+    const probs = probMap.get(f.id) ?? null;
+    let pick: 'home' | 'draw' | 'away' | null = null;
+    if (probs) {
+      pick = probs.home >= probs.draw && probs.home >= probs.away ? 'home' : probs.away >= probs.draw ? 'away' : 'draw';
+    }
+    return {
+      id: f.id, kickoff: f.kickoff, leagueName: f.league?.name ?? '', leagueApiId: f.league?.api_id ?? 0,
+      home: f.home?.name ?? '?', away: f.away?.name ?? '?', homeShort: f.home?.short_name, awayShort: f.away?.short_name,
+      pick, probs,
+    };
+  });
+}
+
 export interface TeamCharts {
   history: number[]; // Elo general en el tiempo (orden cronológico)
   components: { general: number; offensive: number; defensive: number; home: number; away: number };

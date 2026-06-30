@@ -1,6 +1,6 @@
 ---
 import Base from '../layouts/Base.astro';
-import QuotaMeter from '../components/QuotaMeter.tsx';
+import TodayBoard from '../components/TodayBoard.tsx';
 import MatchBoard from '../components/MatchBoard.tsx';
 ---
 
@@ -8,40 +8,16 @@ import MatchBoard from '../components/MatchBoard.tsx';
   <section class="mb-6">
     <h1 class="text-xl font-semibold">Dashboard</h1>
     <p class="mt-1 text-sm text-terminal-muted">
-      Busca un partido para ver ranking Elo, forma, lesiones, H2H y la salida del
-      modelo (1X2, over/under, BTTS, marcador probable y value bets).
+      Pronósticos del día y buscador. Entra a un partido para ver el modelo
+      completo: 1X2, marcadores, Monte Carlo, valor, explicación y laboratorio.
     </p>
   </section>
 
-  <div class="grid gap-4 lg:grid-cols-3">
-    <div class="lg:col-span-2">
-      <MatchBoard client:load />
+  <!-- Partidos del día / próximos + destacados -->
+  <TodayBoard client:load />
 
-      <div class="panel mt-4 p-4">
-        <span class="label">Watchlist</span>
-        <p class="mt-2 text-sm text-terminal-muted">
-          Solo los partidos en tu watchlist consumen cuota en profundidad
-          (odds, lesiones, estadísticas). Es la palanca para no agotar las
-          100 req/día.
-        </p>
-      </div>
-    </div>
-
-    <div class="space-y-4">
-      <QuotaMeter client:load />
-      <div class="panel p-4">
-        <span class="label">Estado del modelo</span>
-        <dl class="mt-2 space-y-1 text-sm">
-          <div class="flex justify-between">
-            <dt class="text-terminal-muted">Versión</dt>
-            <dd class="tabular">dc-elo-ctx-0.1.0</dd>
-          </div>
-          <div class="flex justify-between">
-            <dt class="text-terminal-muted">Poisson / Elo / Ctx</dt>
-            <dd class="tabular">0.50 / 0.30 / 0.20</dd>
-          </div>
-        </dl>
-      </div>
-    </div>
+  <!-- Buscador por equipo -->
+  <div class="mt-8">
+    <MatchBoard client:load />
   </div>
 </Base>
