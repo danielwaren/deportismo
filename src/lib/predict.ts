@@ -25,8 +25,10 @@ import {
   buildNarrative,
   eloToAttackStrength,
   eloToDefenseStrength,
+  xgAdjustedStrengths,
   extractFeatures,
   predictLogReg,
+  type XgAggregate,
   type LogRegWeights,
   type Explanation,
   type Outcome1x2,
@@ -59,6 +61,8 @@ export interface PredictInput {
   injuriesHome?: number; // [0, 1] severidad
   injuriesAway?: number;
   mlWeights?: LogRegWeights | null; // pesos del modelo ML (ml_models); si faltan, no se usa
+  homeXg?: XgAggregate; // xG del equipo local (team_xg); ajusta ataque/defensa si está
+  awayXg?: XgAggregate;
 }
 
 export interface ValueRow {
@@ -78,6 +82,7 @@ export interface MatchAnalysis {
   poisson: PoissonOutput;
   elo1x2: Outcome1x2;
   ml1x2: Outcome1x2 | null; // predicción del modelo ML (si hay pesos)
+  xgUsed: boolean; // ¿se ajustaron las fuerzas con xG?
   final: Outcome1x2;
   montecarlo: MonteCarloResult;
   confidence: ReturnType<typeof confidenceIndex>;
@@ -92,11 +97,21 @@ const homeAdvMultiplier = (homeAdvElo: number) => Math.exp(homeAdvElo / 400);
 export function analyzeMatch(i: PredictInput): MatchAnalysis {
   const weights = i.weights ?? { poisson: 0.6, elo: 0.4 };
 
-  // 1) Fuerzas ataque/defensa desde el Elo ofensivo/defensivo (vs media de liga).
-  const homeAttack = eloToAttackStrength(i.home.offensive, i.leagueAvgElo);
-  const awayDefense = eloToDefenseStrength(i.away.defensive, i.leagueAvgElo);
-  const awayAttack = eloToAttackStrength(i.away.offensive, i.leagueAvgElo);
-  const homeDefense = eloToDefenseStrength(i.home.defensive, i.leagueAvgElo);
+  // 1) Fuerzas ataque/defensa desde el Elo ofensivo/defensivo (vs media de liga),
+  //    AJUSTADAS por xG cuando hay datos (mezcla geométrica por fiabilidad).
+  let homeAttack = eloToAttackStrength(i.home.offensive, i.leagueAvgElo);
+  let homeDefense = eloToDefenseStrength(i.home.defensive, i.leagueAvgElo);
+  let awayAttack = eloToAttackStrength(i.away.offensive, i.leagueAvgElo);
+  let awayDefense = eloToDefenseStrength(i.away.defensive, i.leagueAvgElo);
+  let xgUsed = false;
+  if (i.homeXg) {
+    const r = xgAdjustedStrengths(homeAttack, homeDefense, i.leagueAvgGoals, i.homeXg);
+    homeAttack = r.attack; homeDefense = r.defense; xgUsed = true;
+  }
+  if (i.awayXg) {
+    const r = xgAdjustedStrengths(awayAttack, awayDefense, i.leagueAvgGoals, i.awayXg);
+    awayAttack = r.attack; awayDefense = r.defense; xgUsed = true;
+  }
 
   // 2) λ principistas (multiplicativas + explicadas).
   const lambdas = computeLambdas({
@@ -178,6 +193,7 @@ export function analyzeMatch(i: PredictInput): MatchAnalysis {
     poisson,
     elo1x2,
     ml1x2,
+    xgUsed,
     final,
     montecarlo,
     confidence,

@@ -378,7 +378,7 @@ export async function getMatchAnalysis(id: number): Promise<{ analysis: MatchAna
   const leagueApiId = fx.league?.api_id as number;
   const homeAdvElo = Number(fx.league?.elo_home_adv ?? 0);
 
-  const [{ data: eloRows }, { data: standings }, { data: oddsRows }, mlWeights] = await Promise.all([
+  const [{ data: eloRows }, { data: standings }, { data: oddsRows }, mlWeights, { data: xgRows }] = await Promise.all([
     supabase
       .from('team_elo_history')
       .select('team_id,elo,component,as_of')
@@ -388,7 +388,13 @@ export async function getMatchAnalysis(id: number): Promise<{ analysis: MatchAna
     supabase.from('standings_elo').select('rating').eq('league_id', leagueApiId),
     supabase.from('odds').select('selection,odds').eq('fixture_id', id).eq('market', '1x2'),
     getMlWeights(),
+    supabase.from('team_xg').select('team_id,matches,xg_for,xg_against').in('team_id', [homeId, awayId]),
   ]);
+
+  const xgFor = (teamId: number) => {
+    const r = (xgRows ?? []).find((x: any) => x.team_id === teamId);
+    return r ? { matches: Number(r.matches), xgForPerGame: Number(r.xg_for), xgAgainstPerGame: Number(r.xg_against) } : undefined;
+  };
 
   const rows = (eloRows ?? []) as Array<{ team_id: number; elo: number; component: string }>;
   const home = pickComponents(rows, homeId, 1500);
@@ -412,6 +418,7 @@ export async function getMatchAnalysis(id: number): Promise<{ analysis: MatchAna
     home, away, leagueAvgElo,
     leagueAvgGoals: LEAGUE_AVG_GOALS[leagueApiId] ?? 1.35,
     homeAdvElo, odds, seed: id, mlWeights,
+    homeXg: xgFor(homeId), awayXg: xgFor(awayId),
   };
   return { analysis: analyzeMatch(input), input, homeName: fx.home.name, awayName: fx.away.name };
 }

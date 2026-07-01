@@ -201,6 +201,7 @@ export default function MatchDashboard({ analysis, homeName, awayName }: { analy
           <span>Elo <span className="tabular text-terminal-text">{pct0(a.elo1x2.home)}</span></span>
           {a.ml1x2 && <span>ML <span className="tabular text-terminal-text">{pct0(a.ml1x2.home)}</span></span>}
           <span>Final <span className="tabular text-signal-up">{pct0(a.final.home)}</span></span>
+          {a.xgUsed && <span className="rounded bg-signal-info/15 px-1.5 text-signal-info">xG ✓</span>}
         </div>
         <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
